@@ -20,7 +20,7 @@ from pathlib import Path
 from typing import Any, Optional
 
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from PIL import Image
 from playwright.async_api import async_playwright
@@ -38,6 +38,7 @@ SCAN_HOST = os.environ.get("SCAN_HOST", "host.docker.internal")
 CACHE_DIR = Path(os.environ.get("CACHE_DIR", "/data"))
 THUMBS_DIR = CACHE_DIR / "thumbs"
 SERVICES_FILE = CACHE_DIR / "services.json"
+PREFS_FILE = CACHE_DIR / "preferences.json"
 
 # Concurrency / timing for port scanning.
 SCAN_CONCURRENCY = int(os.environ.get("SCAN_CONCURRENCY", "500"))
@@ -213,13 +214,13 @@ async def _probe_http(host: str, port: int) -> Optional[dict]:
 # Screenshots
 # --------------------------------------------------------------------------- #
 
-async def _screenshot_one(browser, svc: dict) -> bool:
+async def _screenshot_one(browser, svc: dict, color_scheme: Optional[str] = None) -> bool:
     """Capture a thumbnail PNG for one service; return True on success."""
     url = f"{svc['scheme']}://{svc['scan_host']}:{svc['port']}"
     ctx = await browser.new_context(
         viewport={"width": 1280, "height": 800},
         ignore_https_errors=True,
-        color_scheme=SCREENSHOT_COLOR_SCHEME,
+        color_scheme=color_scheme or SCREENSHOT_COLOR_SCHEME,
     )
     try:
         page = await ctx.new_page()
@@ -254,7 +255,7 @@ async def _screenshot_one(browser, svc: dict) -> bool:
             pass
 
 
-async def _screenshot_all(services: list[dict]) -> None:
+async def _screenshot_all(services: list[dict], color_scheme: Optional[str] = None) -> None:
     if not services:
         return
     THUMBS_DIR.mkdir(parents=True, exist_ok=True)
@@ -284,7 +285,7 @@ async def _screenshot_all(services: list[dict]) -> None:
         try:
             async def worker(svc: dict) -> None:
                 async with sem:
-                    await _screenshot_one(browser, svc)
+                    await _screenshot_one(browser, svc, color_scheme=color_scheme)
                 # Mark this port done regardless of capture success — the
                 # frontend tells "captured" apart from "failed" by whether
                 # /api/thumb/<port> returns a PNG or a 404.
@@ -381,6 +382,8 @@ async def lifespan(app: FastAPI):
     THUMBS_DIR.mkdir(parents=True, exist_ok=True)
     if not SERVICES_FILE.exists():
         SERVICES_FILE.write_text("[]")
+    if not PREFS_FILE.exists():
+        PREFS_FILE.write_text("{}")
     log.info(
         "athena-deck up on port %s (SCAN_HOST=%s, cache=%s)",
         APP_PORT, SCAN_HOST, CACHE_DIR,
@@ -420,6 +423,31 @@ async def scan_status() -> JSONResponse:
     return JSONResponse(SCAN_STATE)
 
 
+@app.get("/api/prefs")
+async def get_prefs() -> JSONResponse:
+    """User-level dashboard preferences (host override, custom order, custom
+    categories, hidden ports, theme). Stored as a single JSON blob so the
+    frontend can pull it once on load and PUT it back as a whole."""
+    if not PREFS_FILE.exists():
+        return JSONResponse({})
+    try:
+        return JSONResponse(json.loads(PREFS_FILE.read_text() or "{}"))
+    except json.JSONDecodeError:
+        return JSONResponse({})
+
+
+@app.put("/api/prefs")
+async def put_prefs(request: Request) -> dict:
+    try:
+        data = await request.json()
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"invalid JSON: {e}")
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="expected a JSON object")
+    PREFS_FILE.write_text(json.dumps(data, indent=2))
+    return {"ok": True}
+
+
 async def _start_scan(kind: str, host: Optional[str]) -> dict:
     if SCAN_STATE["running"]:
         raise HTTPException(status_code=409, detail="scan already running")
@@ -436,6 +464,56 @@ async def scan_fast(host: Optional[str] = None) -> dict:
 @app.post("/api/scan/full")
 async def scan_full(host: Optional[str] = None) -> dict:
     return await _start_scan("full", host)
+
+
+async def _run_screenshots_only(services: list[dict], color_scheme: Optional[str]) -> None:
+    """Re-run the screenshot phase against an existing services list, optionally
+    with a different color scheme. Re-uses SCAN_STATE so the frontend's polling
+    loop renders the same shimmer/progress UX as a real scan."""
+    SCAN_STATE.update(
+        {
+            "running": True,
+            "kind": "screenshots",
+            "host": None,
+            "total": len(services),
+            "checked": len(services),
+            "open_count": len(services),
+            "started_at": _now_iso(),
+            "finished_at": None,
+            "error": None,
+            "phase": "screenshot",
+            "screenshots_done": [],
+        }
+    )
+    try:
+        await _screenshot_all(services, color_scheme=color_scheme)
+        SCAN_STATE["phase"] = "done"
+    except Exception as e:
+        log.exception("screenshot regeneration failed")
+        SCAN_STATE["error"] = str(e)
+    finally:
+        SCAN_STATE["running"] = False
+        SCAN_STATE["finished_at"] = _now_iso()
+
+
+@app.post("/api/screenshots/regenerate")
+async def regenerate_screenshots(theme: Optional[str] = None) -> dict:
+    """Re-capture thumbnails for every entry in services.json, optionally in a
+    specific color scheme (e.g. after the user toggles the dashboard theme)."""
+    if SCAN_STATE["running"]:
+        raise HTTPException(status_code=409, detail="scan already running")
+    if not SERVICES_FILE.exists():
+        raise HTTPException(status_code=400, detail="no services to refresh")
+    try:
+        services = json.loads(SERVICES_FILE.read_text() or "[]")
+    except json.JSONDecodeError:
+        services = []
+    if not services:
+        raise HTTPException(status_code=400, detail="no services to refresh")
+    cs = (theme or "").lower()
+    color_scheme = cs if cs in ("light", "dark", "no-preference") else None
+    asyncio.create_task(_run_screenshots_only(services, color_scheme))
+    return {"ok": True, "count": len(services), "theme": color_scheme or SCREENSHOT_COLOR_SCHEME}
 
 
 @app.get("/api/thumb/{port}")

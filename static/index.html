@@ -510,7 +510,71 @@
   </main>
 
 <script>
-(() => {
+(async () => {
+  // ------------------------------------------------------------------------
+  // Server-side preferences. Everything that used to live in localStorage now
+  // syncs to /data/preferences.json on the backend so it's shared across
+  // browsers and devices. Writes are debounced to coalesce bursts.
+  // ------------------------------------------------------------------------
+  const LEGACY_KEYS = {
+    host: 'athena-deck:host',
+    order: 'athena-deck:order',
+    categories: 'athena-deck:categories',
+    'cat-list': 'athena-deck:cat-list',
+    hidden: 'athena-deck:hidden',
+    theme: 'athena-deck:theme',
+  };
+  const Prefs = {
+    data: {},
+    _timer: null,
+    async load() {
+      try {
+        const r = await fetch('/api/prefs');
+        if (r.ok) this.data = (await r.json()) || {};
+      } catch (e) {
+        console.warn('prefs load failed; starting empty', e);
+        this.data = {};
+      }
+      // First-run migration from legacy localStorage.
+      if (Object.keys(this.data).length === 0) {
+        const migrated = {};
+        for (const [k, lsKey] of Object.entries(LEGACY_KEYS)) {
+          const raw = localStorage.getItem(lsKey);
+          if (raw == null) continue;
+          if (k === 'host' || k === 'theme') {
+            migrated[k] = raw;
+          } else {
+            try { migrated[k] = JSON.parse(raw); } catch {}
+          }
+        }
+        if (Object.keys(migrated).length > 0) {
+          this.data = migrated;
+          await this._save();
+        }
+      }
+    },
+    get(key, fallback) {
+      return key in this.data ? this.data[key] : fallback;
+    },
+    set(key, value) {
+      this.data[key] = value;
+      clearTimeout(this._timer);
+      this._timer = setTimeout(() => this._save(), 300);
+    },
+    async _save() {
+      try {
+        await fetch('/api/prefs', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(this.data),
+        });
+      } catch (e) {
+        console.warn('prefs save failed', e);
+      }
+    },
+  };
+  await Prefs.load();
+
   const grid = document.getElementById('grid');
   const statusEl = document.getElementById('status');
   const progEl = document.getElementById('prog');
@@ -519,12 +583,6 @@
   const hostInput = document.getElementById('host-input');
   const hostLabel = document.getElementById('host-label');
 
-  const STORAGE_KEY = 'athena-deck:host';
-  const ORDER_KEY = 'athena-deck:order';
-  const CATEGORIES_KEY = 'athena-deck:categories';   // { port: catName }
-  const CAT_LIST_KEY = 'athena-deck:cat-list';        // ordered list of known categories
-  const HIDDEN_KEY = 'athena-deck:hidden';            // ports the user has removed from view
-  const THEME_KEY = 'athena-deck:theme';              // "dark" | "light"
   const btnAddCat = document.getElementById('btn-add-cat');
   const btnTheme = document.getElementById('btn-theme');
 
@@ -532,15 +590,26 @@
     const isLight = theme === 'light';
     if (isLight) document.documentElement.setAttribute('data-theme', 'light');
     else document.documentElement.removeAttribute('data-theme');
-    // Show the icon for the OPPOSITE state, since clicking switches.
+    // Icon shows the current state; tooltip explains what clicking does.
     btnTheme.textContent = isLight ? '🌞' : '🌙';
     btnTheme.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
-    localStorage.setItem(THEME_KEY, isLight ? 'light' : 'dark');
+    Prefs.set('theme', isLight ? 'light' : 'dark');
   }
-  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  applyTheme(Prefs.get('theme', 'dark'));
   btnTheme.addEventListener('click', () => {
     const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
-    applyTheme(current === 'light' ? 'dark' : 'light');
+    const next = current === 'light' ? 'dark' : 'light';
+    applyTheme(next);
+    // Offer to regenerate screenshots in the new theme so they match the
+    // dashboard. Skip the offer when a scan is in flight or there's nothing
+    // to refresh.
+    if (isScanning) return;
+    if (!currentServices.length) return;
+    setTimeout(() => {
+      if (confirm(`Theme changed to ${next}. Regenerate screenshots in ${next} mode?`)) {
+        regenerateScreenshots(next);
+      }
+    }, 0);
   });
   // Hosts the backend uses internally that don't resolve in the browser.
   // For these, we substitute window.location.hostname when building card links.
@@ -548,10 +617,10 @@
     'host.docker.internal', '127.0.0.1', 'localhost', '0.0.0.0', '::1',
   ]);
 
-  hostInput.value = localStorage.getItem(STORAGE_KEY) || '';
+  hostInput.value = Prefs.get('host', '');
   updateHostLabel();
   hostInput.addEventListener('input', () => {
-    localStorage.setItem(STORAGE_KEY, hostInput.value);
+    Prefs.set('host', hostInput.value);
     updateHostLabel();
   });
 
@@ -572,11 +641,11 @@
   }
 
   function loadOrder() {
-    try { return JSON.parse(localStorage.getItem(ORDER_KEY) || '[]') || []; }
-    catch { return []; }
+    const v = Prefs.get('order', []);
+    return Array.isArray(v) ? v : [];
   }
   function saveOrder(svcs) {
-    localStorage.setItem(ORDER_KEY, JSON.stringify(svcs.map(s => s.port)));
+    Prefs.set('order', svcs.map(s => s.port));
   }
   function applyOrder(svcs) {
     const order = loadOrder();
@@ -597,11 +666,11 @@
   let currentScanPhase = 'idle';   // mirrors backend SCAN_STATE.phase
 
   function loadCategories() {
-    try { return JSON.parse(localStorage.getItem(CATEGORIES_KEY) || '{}') || {}; }
-    catch { return {}; }
+    const v = Prefs.get('categories', {});
+    return (v && typeof v === 'object' && !Array.isArray(v)) ? v : {};
   }
   function saveCategories(cats) {
-    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(cats));
+    Prefs.set('categories', cats);
   }
   function getCategory(port) {
     return loadCategories()[String(port)] || '';
@@ -614,8 +683,8 @@
     saveCategories(cats);
   }
   function loadCatList() {
-    try { return JSON.parse(localStorage.getItem(CAT_LIST_KEY) || '[]') || []; }
-    catch { return []; }
+    const v = Prefs.get('cat-list', []);
+    return Array.isArray(v) ? v : [];
   }
   function saveCatList(list) {
     // De-dupe while preserving order.
@@ -624,19 +693,18 @@
       const t = (c || '').trim().slice(0, 40);
       if (t && !seen.has(t)) { seen.add(t); out.push(t); }
     }
-    localStorage.setItem(CAT_LIST_KEY, JSON.stringify(out));
+    Prefs.set('cat-list', out);
   }
   // Make sure every category referenced by a card assignment exists in the
   // ordered list — important when migrating from older versions, or when a
   // service comes back with a category that was cleared locally.
   function loadHidden() {
-    try {
-      const arr = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]');
-      return new Set((arr || []).map(Number).filter(n => !Number.isNaN(n)));
-    } catch { return new Set(); }
+    const v = Prefs.get('hidden', []);
+    if (!Array.isArray(v)) return new Set();
+    return new Set(v.map(Number).filter(n => !Number.isNaN(n)));
   }
   function saveHidden(set) {
-    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
+    Prefs.set('hidden', [...set]);
   }
 
   function ensureCatList() {
@@ -1139,6 +1207,24 @@
       pollStatus();
     } catch (e) {
       setStatus(`Scan failed: ${e}`, true);
+      setButtons(false);
+    }
+  }
+
+  async function regenerateScreenshots(theme) {
+    setButtons(true);
+    setStatus(`Starting screenshot regeneration (${theme})…`);
+    try {
+      const r = await fetch(`/api/screenshots/regenerate?theme=${encodeURIComponent(theme)}`, { method: 'POST' });
+      if (!r.ok) {
+        const t = await r.text().catch(() => '');
+        setStatus(`Regenerate failed (${r.status}): ${t}`, true);
+        setButtons(false);
+        return;
+      }
+      pollStatus();
+    } catch (e) {
+      setStatus(`Regenerate failed: ${e}`, true);
       setButtons(false);
     }
   }
