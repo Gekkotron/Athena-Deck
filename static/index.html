@@ -99,7 +99,7 @@
   .status {
     font-size: 12px;
     color: var(--muted);
-    margin-left: auto;          /* pin to the far right of the top bar */
+    margin-left: 2px;           /* sits right next to the Scan button */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -108,6 +108,8 @@
   }
   .status:empty { display: none; }
   .status.error { color: var(--error); }
+  /* Push the Add-category button to the far right of the top bar. */
+  #btn-add-cat { margin-left: auto; }
   .progress {
     height: 3px;
     background: var(--panel);
@@ -410,8 +412,8 @@
     </h1>
     <input id="host-input" type="text" placeholder="Target host (optional)" autocomplete="off">
     <button id="btn-scan" type="button">Scan</button>
-    <button id="btn-add-cat" class="btn-add-cat" type="button">+ Add category</button>
     <span class="status" id="status"></span>
+    <button id="btn-add-cat" class="btn-add-cat" type="button">+ Add category</button>
   </header>
   <div class="progress" id="prog" hidden><div></div></div>
   <main>
