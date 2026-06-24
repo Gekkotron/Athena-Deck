@@ -7,6 +7,7 @@
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   :root {
+    /* Dark theme (default). [data-theme="light"] below overrides these. */
     --bg: #07091a;
     --panel: rgba(22, 25, 34, 0.78);
     --panel-2: rgba(28, 32, 48, 0.85);
@@ -15,6 +16,32 @@
     --muted: #8a93a6;
     --accent: #6aa3ff;
     --error: #ff7676;
+    --thumb-bg: linear-gradient(135deg, #0a0d1a 0%, #0e1226 100%);
+    --overlay-bg: var(--overlay-bg);
+    --overlay-bg-strong: var(--overlay-bg-strong);
+    --menu-bg: #161a26;
+    --menu-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    --grad-1: rgba(70, 115, 230, 0.32);
+    --grad-2: rgba(40, 85, 200, 0.26);
+    --grad-3: rgba(20, 60, 150, 0.22);
+  }
+  [data-theme="light"] {
+    --bg: #eef1f7;
+    --panel: rgba(255, 255, 255, 0.82);
+    --panel-2: rgba(245, 247, 252, 0.9);
+    --border: #d4dae6;
+    --text: #1a1f2c;
+    --muted: #5f6979;
+    --accent: #2c6fea;
+    --error: #d23a3a;
+    --thumb-bg: linear-gradient(135deg, #e8edf6 0%, #dde4f1 100%);
+    --overlay-bg: rgba(255, 255, 255, 0.85);
+    --overlay-bg-strong: rgba(255, 255, 255, 0.95);
+    --menu-bg: #ffffff;
+    --menu-shadow: 0 8px 24px rgba(20, 30, 60, 0.15);
+    --grad-1: rgba(120, 160, 240, 0.22);
+    --grad-2: rgba(80, 130, 220, 0.18);
+    --grad-3: rgba(150, 180, 230, 0.18);
   }
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
@@ -34,9 +61,9 @@
     inset: -25%;
     z-index: -1;
     background:
-      radial-gradient(ellipse 55% 45% at 25% 25%, rgba(70, 115, 230, 0.32), transparent 65%),
-      radial-gradient(ellipse 50% 50% at 75% 60%, rgba(40, 85, 200, 0.26), transparent 65%),
-      radial-gradient(ellipse 65% 50% at 50% 95%, rgba(20, 60, 150, 0.22), transparent 70%);
+      radial-gradient(ellipse 55% 45% at 25% 25%, var(--grad-1), transparent 65%),
+      radial-gradient(ellipse 50% 50% at 75% 60%, var(--grad-2), transparent 65%),
+      radial-gradient(ellipse 65% 50% at 50% 95%, var(--grad-3), transparent 70%);
     animation: drift 28s ease-in-out infinite alternate;
     pointer-events: none;
     will-change: transform;
@@ -108,8 +135,8 @@
   }
   .status:empty { display: none; }
   .status.error { color: var(--error); }
-  /* Push the Add-category button to the far right of the top bar. */
-  #btn-add-cat { margin-left: auto; }
+  /* Margin-left:auto now lives on .btn-theme so the theme + add-cat pair
+     drift to the right edge together. */
   .progress {
     height: 3px;
     background: var(--panel);
@@ -132,7 +159,7 @@
     flex-direction: column;
     gap: 22px;
   }
-  .btn-add-cat {
+  .btn-add-cat, .btn-theme {
     background: transparent;
     color: var(--muted);
     border: 1px dashed var(--border);
@@ -140,9 +167,15 @@
     font-size: 12px;
     border-radius: 6px;
     cursor: pointer;
-    transition: color 0.15s, border-color 0.15s;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    line-height: 1.1;
   }
-  .btn-add-cat:hover { color: var(--accent); border-color: var(--accent); }
+  .btn-add-cat:hover, .btn-theme:hover { color: var(--accent); border-color: var(--accent); }
+  .btn-theme {
+    margin-left: auto;          /* push the theme + add-cat pair to the right */
+    font-size: 14px;
+    padding: 5px 10px;
+  }
   .cat-section {
     display: flex;
     flex-direction: column;
@@ -252,7 +285,7 @@
     height: 28px;
     padding: 0;
     border-radius: 50%;
-    background: rgba(7, 9, 26, 0.75);
+    background: var(--overlay-bg);
     border: 1px solid var(--border);
     color: var(--text);
     font-size: 13px;
@@ -270,7 +303,7 @@
   .card.menu-open .cat-menu-btn { opacity: 1; }
   .cat-menu-btn:hover {
     border-color: var(--accent);
-    background: rgba(7, 9, 26, 0.95);
+    background: var(--overlay-bg-strong);
   }
   .tile-remove {
     position: absolute;
@@ -280,7 +313,7 @@
     height: 26px;
     padding: 0;
     border-radius: 50%;
-    background: rgba(7, 9, 26, 0.75);
+    background: var(--overlay-bg);
     border: 1px solid var(--border);
     color: var(--text);
     font-size: 16px;
@@ -298,7 +331,7 @@
   .tile-remove:hover {
     border-color: var(--error);
     color: var(--error);
-    background: rgba(7, 9, 26, 0.95);
+    background: var(--overlay-bg-strong);
   }
   .hidden-footer {
     display: flex;
@@ -322,12 +355,12 @@
     left: 6px;
     min-width: 150px;
     max-width: calc(100% - 12px);
-    background: #161a26;
+    background: var(--menu-bg);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 4px;
     z-index: 5;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    box-shadow: var(--menu-shadow);
     display: flex;
     flex-direction: column;
     gap: 1px;
@@ -353,7 +386,7 @@
   .cat-menu-item.muted { color: var(--muted); font-style: italic; }
   .thumb {
     aspect-ratio: 16 / 10;
-    background: linear-gradient(135deg, #0a0d1a 0%, #0e1226 100%);
+    background: var(--thumb-bg);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -468,6 +501,7 @@
     <input id="host-input" type="text" placeholder="Target host (optional)" autocomplete="off">
     <button id="btn-scan" type="button">Scan</button>
     <span class="status" id="status"></span>
+    <button id="btn-theme" class="btn-theme" type="button" title="Toggle theme" aria-label="Toggle theme">🌙</button>
     <button id="btn-add-cat" class="btn-add-cat" type="button">+ Add category</button>
   </header>
   <div class="progress" id="prog" hidden><div></div></div>
@@ -490,7 +524,24 @@
   const CATEGORIES_KEY = 'athena-deck:categories';   // { port: catName }
   const CAT_LIST_KEY = 'athena-deck:cat-list';        // ordered list of known categories
   const HIDDEN_KEY = 'athena-deck:hidden';            // ports the user has removed from view
+  const THEME_KEY = 'athena-deck:theme';              // "dark" | "light"
   const btnAddCat = document.getElementById('btn-add-cat');
+  const btnTheme = document.getElementById('btn-theme');
+
+  function applyTheme(theme) {
+    const isLight = theme === 'light';
+    if (isLight) document.documentElement.setAttribute('data-theme', 'light');
+    else document.documentElement.removeAttribute('data-theme');
+    // Show the icon for the OPPOSITE state, since clicking switches.
+    btnTheme.textContent = isLight ? '🌞' : '🌙';
+    btnTheme.title = isLight ? 'Switch to dark theme' : 'Switch to light theme';
+    localStorage.setItem(THEME_KEY, isLight ? 'light' : 'dark');
+  }
+  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  btnTheme.addEventListener('click', () => {
+    const current = document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+    applyTheme(current === 'light' ? 'dark' : 'light');
+  });
   // Hosts the backend uses internally that don't resolve in the browser.
   // For these, we substitute window.location.hostname when building card links.
   const INTERNAL_HOSTS = new Set([
