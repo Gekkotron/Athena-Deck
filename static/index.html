@@ -272,6 +272,50 @@
     border-color: var(--accent);
     background: rgba(7, 9, 26, 0.95);
   }
+  .tile-remove {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(7, 9, 26, 0.75);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 16px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s, border-color 0.15s, background 0.15s, color 0.15s;
+    cursor: pointer;
+    z-index: 3;
+  }
+  .card:hover .tile-remove,
+  .tile-remove:focus-visible { opacity: 1; }
+  .tile-remove:hover {
+    border-color: var(--error);
+    color: var(--error);
+    background: rgba(7, 9, 26, 0.95);
+  }
+  .hidden-footer {
+    display: flex;
+    justify-content: center;
+    padding: 8px 0 4px;
+  }
+  .show-all-btn {
+    background: transparent;
+    color: var(--muted);
+    border: 1px dashed var(--border);
+    padding: 6px 14px;
+    font-size: 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+  }
+  .show-all-btn:hover { color: var(--accent); border-color: var(--accent); }
   .cat-menu {
     position: absolute;
     top: 40px;
@@ -336,7 +380,8 @@
     pointer-events: none;
   }
   .thumb.loaded::after,
-  .thumb.failed::after { display: none; }
+  .thumb.failed::after,
+  .thumb.no-ui::after { display: none; }
   /* While a scan is in its screenshot phase, every thumb plays the shimmer
      again — even thumbs that already loaded a stale screenshot — so the UI
      visibly says "fresh captures are happening". */
@@ -345,6 +390,16 @@
     animation: shimmer 1.4s linear infinite;
   }
   .thumb.refreshing img { opacity: 0.55; }
+  /* Services that responded with HTTP 404 have no real web UI at "/" — show a
+     calm placeholder instead of a captured 404 error page. */
+  .thumb.no-ui::before {
+    content: "no web interface";
+    color: var(--muted);
+    font-size: 10.5px;
+    letter-spacing: 0.6px;
+    text-transform: uppercase;
+    opacity: 0.65;
+  }
   .thumb.failed::before {
     content: "no preview";
     color: var(--muted);
@@ -434,6 +489,7 @@
   const ORDER_KEY = 'athena-deck:order';
   const CATEGORIES_KEY = 'athena-deck:categories';   // { port: catName }
   const CAT_LIST_KEY = 'athena-deck:cat-list';        // ordered list of known categories
+  const HIDDEN_KEY = 'athena-deck:hidden';            // ports the user has removed from view
   const btnAddCat = document.getElementById('btn-add-cat');
   // Hosts the backend uses internally that don't resolve in the browser.
   // For these, we substitute window.location.hostname when building card links.
@@ -522,6 +578,16 @@
   // Make sure every category referenced by a card assignment exists in the
   // ordered list — important when migrating from older versions, or when a
   // service comes back with a category that was cleared locally.
+  function loadHidden() {
+    try {
+      const arr = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]');
+      return new Set((arr || []).map(Number).filter(n => !Number.isNaN(n)));
+    } catch { return new Set(); }
+  }
+  function saveHidden(set) {
+    localStorage.setItem(HIDDEN_KEY, JSON.stringify([...set]));
+  }
+
   function ensureCatList() {
     const list = loadCatList();
     const seen = new Set(list);
@@ -545,6 +611,8 @@
     grid.innerHTML = '';
     const cats = loadCategories();
     const catList = ensureCatList();
+    const hidden = loadHidden();
+    const visibleServices = currentServices.filter(s => !hidden.has(s.port));
 
     // Partition services into sections, preserving the flat global order
     // inside each section. Section order: Uncategorized first, then categories
@@ -552,7 +620,7 @@
     const buckets = new Map();
     buckets.set('', []);
     for (const c of catList) buckets.set(c, []);
-    for (const s of currentServices) {
+    for (const s of visibleServices) {
       const c = cats[String(s.port)] || '';
       if (!buckets.has(c)) buckets.set(c, []);  // safety net
       buckets.get(c).push(s);
@@ -562,10 +630,27 @@
     const sections = [...catList, ''];
     for (const cat of sections) {
       const svcs = buckets.get(cat) || [];
-      // Hide an empty Uncategorized only when there are truly no services at
-      // all — otherwise keep it as a "drag here to clear" target.
-      if (cat === '' && svcs.length === 0 && currentServices.length === 0) continue;
+      // Hide an empty Uncategorized only when there are truly no visible
+      // services at all — otherwise keep it as a "drag here to clear" target.
+      if (cat === '' && svcs.length === 0 && visibleServices.length === 0) continue;
       grid.appendChild(buildSection(cat, svcs));
+    }
+
+    // Footer link to restore removed tiles.
+    if (hidden.size > 0) {
+      const footer = document.createElement('div');
+      footer.className = 'hidden-footer';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'show-all-btn';
+      btn.textContent = `Show ${hidden.size} hidden tile${hidden.size === 1 ? '' : 's'}`;
+      btn.addEventListener('click', () => {
+        if (!confirm(`Restore all ${hidden.size} hidden tile${hidden.size === 1 ? '' : 's'}?`)) return;
+        saveHidden(new Set());
+        renderServices(currentServices);
+      });
+      footer.appendChild(btn);
+      grid.appendChild(footer);
     }
   }
 
@@ -657,12 +742,17 @@
     card.draggable = true;
     card.dataset.port = String(s.port);
 
+    const isNoUi = s.status === 404;
     const cacheBust = s.last_seen ? `?t=${encodeURIComponent(s.last_seen)}` : '';
+    const thumbCls = isNoUi
+      ? 'thumb no-ui'
+      : 'thumb' + (isScanning && currentScanPhase === 'screenshot' ? ' refreshing' : '');
+    const thumbInner = isNoUi
+      ? ''
+      : `<img loading="lazy" src="${esc(s.thumb)}${cacheBust}" alt="">`;
     card.innerHTML = `
       <a class="card-link" href="${esc(linkFor(s))}" target="_blank" rel="noopener noreferrer">
-        <div class="thumb${isScanning && currentScanPhase === 'screenshot' ? ' refreshing' : ''}">
-          <img loading="lazy" src="${esc(s.thumb)}${cacheBust}" alt="">
-        </div>
+        <div class="${thumbCls}">${thumbInner}</div>
         <div class="meta">
           <div class="title">${esc(s.title || ('port ' + s.port))}</div>
           <div class="sub">${esc(s.scheme)} · port ${esc(s.port)}</div>
@@ -670,25 +760,41 @@
       </a>
       <button class="cat-menu-btn" type="button" title="Change category" aria-label="Change category">🏷</button>
       <div class="cat-menu" hidden role="menu"></div>
+      <button class="tile-remove" type="button" title="Remove tile" aria-label="Remove tile">×</button>
     `;
 
     const img = card.querySelector('.thumb img');
-    img.addEventListener('load', () => {
-      img.parentElement.classList.add('loaded');
-    });
-    img.addEventListener('error', () => {
-      // If the backend has already reported this port's capture as done, a
-      // 404 here means the capture genuinely failed — don't retry, mark failed.
-      if (isScanning && !img.dataset.done) {
-        setTimeout(() => {
-          if (!img.isConnected) return;
-          const base = img.src.split('?')[0];
-          img.src = base + '?retry=' + Date.now();
-        }, 2500);
-      } else {
-        img.parentElement.classList.add('failed');
-        img.remove();
-      }
+    if (img) {
+      img.addEventListener('load', () => {
+        img.parentElement.classList.add('loaded');
+      });
+      img.addEventListener('error', () => {
+        // If the backend has already reported this port's capture as done, a
+        // 404 here means the capture genuinely failed — don't retry, mark failed.
+        if (isScanning && !img.dataset.done) {
+          setTimeout(() => {
+            if (!img.isConnected) return;
+            const base = img.src.split('?')[0];
+            img.src = base + '?retry=' + Date.now();
+          }, 2500);
+        } else {
+          img.parentElement.classList.add('failed');
+          img.remove();
+        }
+      });
+    }
+
+    const removeBtn = card.querySelector('.tile-remove');
+    removeBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+    removeBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const label = s.title || ('port ' + s.port);
+      if (!confirm(`Remove "${label}" from the dashboard?`)) return;
+      const h = loadHidden();
+      h.add(s.port);
+      saveHidden(h);
+      renderServices(currentServices);
     });
 
     const btn = card.querySelector('.cat-menu-btn');
@@ -802,8 +908,9 @@
 
   function attachDrag(card) {
     card.addEventListener('dragstart', (e) => {
-      // Don't start a tile drag from the menu button or the menu itself.
-      if (e.target && e.target.closest && e.target.closest('.cat-menu-btn, .cat-menu')) {
+      // Don't start a tile drag from the menu button, the menu, or the
+      // remove button.
+      if (e.target && e.target.closest && e.target.closest('.cat-menu-btn, .cat-menu, .tile-remove')) {
         e.preventDefault();
         return;
       }

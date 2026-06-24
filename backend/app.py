@@ -180,11 +180,9 @@ _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
 async def _probe_http(host: str, port: int) -> Optional[dict]:
-    """Try HTTP then HTTPS. Return {scheme, title} on first response, else None.
-
-    The URL itself is intentionally NOT stored: the host we used (e.g.
-    `host.docker.internal`) is container-internal and the browser can't resolve
-    it. The frontend rebuilds the URL using the user's actual hostname.
+    """Try HTTP then HTTPS. Return {scheme, title, status} on first response,
+    else None. `status` is the HTTP status code the frontend uses to decide
+    whether the port actually serves a web UI (we treat 404 as "no UI here").
     """
     for scheme in ("http", "https"):
         url = f"{scheme}://{host}:{port}"
@@ -195,7 +193,6 @@ async def _probe_http(host: str, port: int) -> Optional[dict]:
                 r = await client.get(url)
         except Exception:
             continue
-        # We accept any HTTP status — even 401/403 means there *is* a web UI.
         title: Optional[str] = None
         try:
             text = r.text or ""
@@ -204,7 +201,11 @@ async def _probe_http(host: str, port: int) -> Optional[dict]:
                 title = re.sub(r"\s+", " ", m.group(1)).strip()[:200]
         except Exception:
             title = None
-        return {"scheme": scheme, "title": title or f"port {port}"}
+        return {
+            "scheme": scheme,
+            "title": title or f"port {port}",
+            "status": r.status_code,
+        }
     return None
 
 
@@ -257,6 +258,17 @@ async def _screenshot_all(services: list[dict]) -> None:
     if not services:
         return
     THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Services that responded with 404 don't have a web UI at "/" — capturing
+    # them would just produce a sad error page. Skip them, but report them as
+    # "done" immediately so the frontend stops shimmering their tiles.
+    to_capture = [s for s in services if s.get("status") != 404]
+    for s in services:
+        if s.get("status") == 404:
+            SCAN_STATE["screenshots_done"].append(s["port"])
+    if not to_capture:
+        return
+
     sem = asyncio.Semaphore(max(1, SCREENSHOT_CONCURRENCY))
     launch_args = ["--no-sandbox"]
     if SCREENSHOT_FORCE_DARK:
@@ -277,7 +289,7 @@ async def _screenshot_all(services: list[dict]) -> None:
                 # frontend tells "captured" apart from "failed" by whether
                 # /api/thumb/<port> returns a PNG or a 404.
                 SCAN_STATE["screenshots_done"].append(svc["port"])
-            await asyncio.gather(*(worker(s) for s in services))
+            await asyncio.gather(*(worker(s) for s in to_capture))
         finally:
             try:
                 await browser.close()
@@ -332,6 +344,7 @@ async def _run_scan(host: str, kind: str) -> None:
                     "port": p,
                     "scheme": info["scheme"],
                     "title": info["title"],
+                    "status": info["status"],
                     "scan_host": host,
                     "thumb": f"/api/thumb/{p}",
                     "last_seen": _now_iso(),
