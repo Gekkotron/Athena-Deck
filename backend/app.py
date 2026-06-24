@@ -381,17 +381,11 @@ async def scan_full(host: Optional[str] = None) -> dict:
     return await _start_scan("full", host)
 
 
-# 1x1 transparent PNG used when no thumbnail has been captured yet.
-_PLACEHOLDER_PNG = bytes.fromhex(
-    "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
-    "0000000d49444154789c63f8cfc0f01f000005000100bd8c5f5b0000000049454e"
-    "44ae426082"
-)
-
-
 @app.get("/api/thumb/{port}")
 async def thumb(port: int) -> Response:
+    """Serve the cached thumbnail or 404 — the frontend uses a 404 as the
+    'no screenshot available' signal to swap shimmer → static placeholder."""
     path = THUMBS_DIR / f"{port}.png"
     if path.exists():
         return FileResponse(path, media_type="image/png")
-    return Response(content=_PLACEHOLDER_PNG, media_type="image/png", status_code=200)
+    raise HTTPException(status_code=404, detail="no thumbnail")
