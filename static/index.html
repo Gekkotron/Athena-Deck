@@ -1176,6 +1176,10 @@
         await wait(200);
         progEl.hidden = true;
         progBar.style.width = '0%';
+        // Safety net: clear .refreshing from any thumb whose port never made
+        // it into screenshots_done (backend crash, early exit, exception in
+        // the worker, etc.). Without this, a tile can shimmer forever.
+        grid.querySelectorAll('.thumb.refreshing').forEach(t => t.classList.remove('refreshing'));
         if (s.error) {
           setStatus(`Done with error: ${s.error}`, true);
         } else if (s.kind) {
