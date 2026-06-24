@@ -1103,6 +1103,7 @@
     if (polling) return;
     polling = true;
     progEl.hidden = false;
+    let finalKind = null;
     while (true) {
       let s;
       try {
@@ -1180,13 +1181,20 @@
         } else if (s.kind) {
           setStatus(`Done. ${s.open_count} open port${s.open_count === 1 ? '' : 's'}.`);
         }
+        finalKind = s.kind || null;
         break;
       }
       await wait(700);
     }
     polling = false;
     setButtons(false);
-    await loadServices();
+    // For a screenshot regenerate, the per-tile sync has already swapped
+    // every visible <img> to the new capture. A full loadServices() here
+    // would just blink every card for nothing (and previously was the
+    // source of the "revert to old color" glitch via stale HTTP cache).
+    if (finalKind !== 'screenshots') {
+      await loadServices();
+    }
   }
 
   function wait(ms) { return new Promise(r => setTimeout(r, ms)); }

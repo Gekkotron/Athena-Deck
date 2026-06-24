@@ -286,17 +286,30 @@ async def _screenshot_all(services: list[dict], color_scheme: Optional[str] = No
         try:
             async def worker(svc: dict) -> None:
                 async with sem:
-                    await _screenshot_one(browser, svc, color_scheme=color_scheme)
+                    ok = await _screenshot_one(browser, svc, color_scheme=color_scheme)
                 # Mark this port done regardless of capture success — the
                 # frontend tells "captured" apart from "failed" by whether
                 # /api/thumb/<port> returns a PNG or a 404.
                 SCAN_STATE["screenshots_done"].append(svc["port"])
+                # Bump last_seen on a successful capture so the cache-bust URL
+                # the frontend builds (`/api/thumb/<port>?t=<last_seen>`)
+                # changes — otherwise the browser would serve the previous
+                # screenshot from its HTTP cache after the scan ends.
+                if ok:
+                    svc["last_seen"] = _now_iso()
             await asyncio.gather(*(worker(s) for s in to_capture))
         finally:
             try:
                 await browser.close()
             except Exception:
                 pass
+
+    # Persist refreshed last_seen so the post-scan re-render uses fresh
+    # cache-bust URLs.
+    try:
+        SERVICES_FILE.write_text(json.dumps(services, indent=2))
+    except Exception:
+        log.exception("failed to persist services after screenshots")
 
 
 # --------------------------------------------------------------------------- #
