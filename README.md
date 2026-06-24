@@ -26,14 +26,17 @@ n8n, whatever else is listening.
 
 All settings are environment variables.
 
-| Variable                 | Default                  | Meaning |
-|--------------------------|--------------------------|---------|
-| `APP_PORT`               | `8888`                   | Port the dashboard listens on. |
-| `SCAN_HOST`              | `host.docker.internal`   | Host that the scanner targets. |
-| `CACHE_DIR`              | `/data`                  | Where `services.json` and `thumbs/` live. |
-| `SCAN_CONCURRENCY`       | `500`                    | Max concurrent TCP connect attempts. |
-| `SCAN_CONNECT_TIMEOUT`   | `0.3`                    | Connect timeout per port (seconds). |
-| `SCREENSHOT_TIMEOUT_MS`  | `8000`                   | Playwright page-load timeout (ms). |
+| Variable                  | Default                  | Meaning |
+|---------------------------|--------------------------|---------|
+| `APP_PORT`                | `8888`                   | Port the dashboard listens on. |
+| `SCAN_HOST`               | `host.docker.internal`   | Host that the scanner targets. |
+| `CACHE_DIR`               | `/data`                  | Where `services.json` and `thumbs/` live. |
+| `SCAN_CONCURRENCY`        | `500`                    | Max concurrent TCP connect attempts. |
+| `SCAN_CONNECT_TIMEOUT`    | `0.3`                    | Connect timeout per port (seconds). |
+| `SCREENSHOT_TIMEOUT_MS`   | `12000`                  | Playwright page-navigation timeout (ms). |
+| `SCREENSHOT_SETTLE_MS`    | `2500`                   | Extra wait after page load before snapping (ms). |
+| `SCREENSHOT_CONCURRENCY`  | `3`                      | Parallel headless contexts during capture. |
+| `SCREENSHOT_COLOR_SCHEME` | `dark`                   | `dark` / `light` / `no-preference` — what the browser reports for `prefers-color-scheme`. |
 
 You can also override `SCAN_HOST` per-scan from the UI: type a host into the
 text field next to the scan buttons (it's persisted to localStorage).

@@ -53,6 +53,13 @@ SCAN_CONNECT_TIMEOUT = float(os.environ.get("SCAN_CONNECT_TIMEOUT", "0.3"))
 SCREENSHOT_TIMEOUT_MS = int(os.environ.get("SCREENSHOT_TIMEOUT_MS", "12000"))
 SCREENSHOT_SETTLE_MS = int(os.environ.get("SCREENSHOT_SETTLE_MS", "2500"))
 SCREENSHOT_CONCURRENCY = int(os.environ.get("SCREENSHOT_CONCURRENCY", "3"))
+# Reported `prefers-color-scheme` for the headless browser. Most self-hosted
+# UIs honour this and render in their dark theme — matching the dashboard.
+# Values: "dark" | "light" | "no-preference".
+_COLOR_SCHEME_RAW = os.environ.get("SCREENSHOT_COLOR_SCHEME", "dark").lower()
+SCREENSHOT_COLOR_SCHEME = (
+    _COLOR_SCHEME_RAW if _COLOR_SCHEME_RAW in ("dark", "light", "no-preference") else "dark"
+)
 THUMB_WIDTH = 400
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -204,6 +211,7 @@ async def _screenshot_one(browser, svc: dict) -> bool:
     ctx = await browser.new_context(
         viewport={"width": 1280, "height": 800},
         ignore_https_errors=True,
+        color_scheme=SCREENSHOT_COLOR_SCHEME,
     )
     try:
         page = await ctx.new_page()
