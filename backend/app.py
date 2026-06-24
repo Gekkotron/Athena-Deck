@@ -44,7 +44,11 @@ SCAN_CONCURRENCY = int(os.environ.get("SCAN_CONCURRENCY", "500"))
 SCAN_CONNECT_TIMEOUT = float(os.environ.get("SCAN_CONNECT_TIMEOUT", "0.3"))
 
 # Screenshot timing.
-SCREENSHOT_TIMEOUT_MS = int(os.environ.get("SCREENSHOT_TIMEOUT_MS", "8000"))
+# - TIMEOUT_MS: page-navigation timeout (networkidle / load).
+# - SETTLE_MS: extra wait *after* navigation so JS-rendered UIs (SPAs, charts,
+#   late-loading fonts/images) have time to paint before we screenshot them.
+SCREENSHOT_TIMEOUT_MS = int(os.environ.get("SCREENSHOT_TIMEOUT_MS", "12000"))
+SCREENSHOT_SETTLE_MS = int(os.environ.get("SCREENSHOT_SETTLE_MS", "2500"))
 THUMB_WIDTH = 400
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -155,7 +159,12 @@ _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
 async def _probe_http(host: str, port: int) -> Optional[dict]:
-    """Try HTTP then HTTPS. Return service dict on first response, else None."""
+    """Try HTTP then HTTPS. Return {scheme, title} on first response, else None.
+
+    The URL itself is intentionally NOT stored: the host we used (e.g.
+    `host.docker.internal`) is container-internal and the browser can't resolve
+    it. The frontend rebuilds the URL using the user's actual hostname.
+    """
     for scheme in ("http", "https"):
         url = f"{scheme}://{host}:{port}"
         try:
@@ -174,7 +183,7 @@ async def _probe_http(host: str, port: int) -> Optional[dict]:
                 title = re.sub(r"\s+", " ", m.group(1)).strip()[:200]
         except Exception:
             title = None
-        return {"scheme": scheme, "title": title or f"port {port}", "url": url}
+        return {"scheme": scheme, "title": title or f"port {port}"}
     return None
 
 
@@ -184,6 +193,7 @@ async def _probe_http(host: str, port: int) -> Optional[dict]:
 
 async def _screenshot_one(browser, svc: dict) -> bool:
     """Capture a thumbnail PNG for one service; return True on success."""
+    url = f"{svc['scheme']}://{svc['scan_host']}:{svc['port']}"
     ctx = await browser.new_context(
         viewport={"width": 1280, "height": 800},
         ignore_https_errors=True,
@@ -192,16 +202,18 @@ async def _screenshot_one(browser, svc: dict) -> bool:
         page = await ctx.new_page()
         # Try networkidle first (better for SPAs), fall back to load.
         try:
-            await page.goto(
-                svc["url"], wait_until="networkidle", timeout=SCREENSHOT_TIMEOUT_MS
-            )
+            await page.goto(url, wait_until="networkidle", timeout=SCREENSHOT_TIMEOUT_MS)
         except Exception:
             try:
-                await page.goto(
-                    svc["url"], wait_until="load", timeout=SCREENSHOT_TIMEOUT_MS
-                )
+                await page.goto(url, wait_until="load", timeout=SCREENSHOT_TIMEOUT_MS)
             except Exception:
                 # Even the load event timed out — screenshot whatever is there.
+                pass
+        # Let JS-heavy UIs finish painting before snapping.
+        if SCREENSHOT_SETTLE_MS > 0:
+            try:
+                await page.wait_for_timeout(SCREENSHOT_SETTLE_MS)
+            except Exception:
                 pass
         png_bytes = await page.screenshot(type="png", full_page=False)
         img = Image.open(BytesIO(png_bytes))
@@ -210,7 +222,7 @@ async def _screenshot_one(browser, svc: dict) -> bool:
         thumb.save(THUMBS_DIR / f"{svc['port']}.png", "PNG", optimize=True)
         return True
     except Exception as e:
-        log.warning("screenshot failed for %s: %s", svc.get("url"), e)
+        log.warning("screenshot failed for %s: %s", url, e)
         return False
     finally:
         try:
@@ -279,7 +291,9 @@ async def _run_scan(host: str, kind: str) -> None:
             services.append(
                 {
                     "port": p,
-                    **info,
+                    "scheme": info["scheme"],
+                    "title": info["title"],
+                    "scan_host": host,
                     "thumb": f"/api/thumb/{p}",
                     "last_seen": _now_iso(),
                 }
