@@ -66,7 +66,7 @@
     font-size: 16px;
     font-weight: 600;
     margin: 0;
-    margin-right: auto;
+    margin-right: 8px;
     letter-spacing: 0.2px;
   }
   header h1 .target {
@@ -90,12 +90,12 @@
   .status {
     font-size: 12px;
     color: var(--muted);
-    margin-left: 4px;
+    margin-left: auto;          /* pin to the far right of the top bar */
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     min-width: 0;
-    flex: 1 1 auto;
+    max-width: 40%;
   }
   .status:empty { display: none; }
   .status.error { color: var(--error); }
@@ -873,24 +873,46 @@
       isScanning = !!s.running;
       currentScanPhase = s.phase || 'idle';
 
-      // First time we see the screenshot phase: refresh services.json (which
-      // the backend wrote just before this phase started) so any newly
-      // discovered ports get cards, and put every thumb into shimmer mode.
+      // Entering the screenshot phase: refresh services.json (which the
+      // backend wrote just before this phase started) so any newly discovered
+      // ports get rendered cards. Every tile starts in shimmer mode.
       if (s.running && phase === 'screenshot' && prevPhase !== 'screenshot') {
         await loadServices();
-        grid.querySelectorAll('.thumb').forEach(t => {
-          t.classList.remove('failed');
-          t.classList.add('refreshing');
+      }
+
+      // Drive per-tile shimmer from SCAN_STATE.screenshots_done. Tiles whose
+      // port has just transitioned to "done" drop the shimmer and force the
+      // <img> to refetch so the freshly captured PNG appears.
+      if (s.running && phase === 'screenshot') {
+        const done = new Set((s.screenshots_done || []).map(Number));
+        grid.querySelectorAll('.card').forEach(card => {
+          const port = parseInt(card.dataset.port, 10);
+          const thumb = card.querySelector('.thumb');
+          if (!thumb) return;
+          if (done.has(port)) {
+            if (thumb.classList.contains('refreshing')) {
+              thumb.classList.remove('refreshing');
+              const img = thumb.querySelector('img');
+              if (img) {
+                thumb.classList.remove('loaded', 'failed');
+                img.src = img.src.split('?')[0] + '?done=' + Date.now();
+              }
+            }
+          } else {
+            thumb.classList.remove('failed');
+            thumb.classList.add('refreshing');
+          }
         });
       }
 
       if (s.running) {
+        const sd = (s.screenshots_done || []).length;
         if (phase === 'ports') {
           setStatus(`scanning ports: ${s.checked}/${s.total} (${s.open_count} open)`);
         } else if (phase === 'probe') {
           setStatus(`probing HTTP on ${s.open_count} open ports…`);
         } else if (phase === 'screenshot') {
-          setStatus(`capturing screenshots…`);
+          setStatus(`capturing screenshots… ${sd}/${currentServices.length}`);
         } else {
           setStatus(`scanning…`);
         }

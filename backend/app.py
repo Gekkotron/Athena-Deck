@@ -47,8 +47,12 @@ SCAN_CONNECT_TIMEOUT = float(os.environ.get("SCAN_CONNECT_TIMEOUT", "0.3"))
 # - TIMEOUT_MS: page-navigation timeout (networkidle / load).
 # - SETTLE_MS: extra wait *after* navigation so JS-rendered UIs (SPAs, charts,
 #   late-loading fonts/images) have time to paint before we screenshot them.
+# - CONCURRENCY: how many Chromium contexts to run in parallel. One browser
+#   instance shared across all of them; each context is ~30–80 MB of RAM in
+#   practice, so 3 keeps a Geekom-class host comfortable.
 SCREENSHOT_TIMEOUT_MS = int(os.environ.get("SCREENSHOT_TIMEOUT_MS", "12000"))
 SCREENSHOT_SETTLE_MS = int(os.environ.get("SCREENSHOT_SETTLE_MS", "2500"))
+SCREENSHOT_CONCURRENCY = int(os.environ.get("SCREENSHOT_CONCURRENCY", "3"))
 THUMB_WIDTH = 400
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -99,6 +103,9 @@ SCAN_STATE: dict[str, Any] = {
     "finished_at": None,
     "error": None,
     "phase": "idle",        # "idle" | "ports" | "probe" | "screenshot" | "done"
+    # Ports whose screenshot finished during the current screenshot phase.
+    # The frontend polls this to drive per-tile shimmer state.
+    "screenshots_done": [],
 }
 
 
@@ -235,11 +242,18 @@ async def _screenshot_all(services: list[dict]) -> None:
     if not services:
         return
     THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+    sem = asyncio.Semaphore(max(1, SCREENSHOT_CONCURRENCY))
     async with async_playwright() as pw:
         browser = await pw.chromium.launch(args=["--no-sandbox"])
         try:
-            for svc in services:
-                await _screenshot_one(browser, svc)
+            async def worker(svc: dict) -> None:
+                async with sem:
+                    await _screenshot_one(browser, svc)
+                # Mark this port done regardless of capture success — the
+                # frontend tells "captured" apart from "failed" by whether
+                # /api/thumb/<port> returns a PNG or a 404.
+                SCAN_STATE["screenshots_done"].append(svc["port"])
+            await asyncio.gather(*(worker(s) for s in services))
         finally:
             try:
                 await browser.close()
@@ -274,6 +288,7 @@ async def _run_scan(host: str, kind: str) -> None:
             "finished_at": None,
             "error": None,
             "phase": "ports",
+            "screenshots_done": [],
         }
     )
     try:
