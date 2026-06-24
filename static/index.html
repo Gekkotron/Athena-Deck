@@ -200,7 +200,6 @@
     background: var(--panel);
     border: 1px solid var(--border);
     border-radius: 8px;
-    overflow: hidden;
     display: flex;
     flex-direction: column;
     transition: border-color 0.15s, transform 0.15s;
@@ -225,8 +224,73 @@
     text-decoration: none;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
+    border-radius: 8px;
   }
   .card .meta { user-select: none; }
+  .cat-menu-btn {
+    position: absolute;
+    top: 6px;
+    left: 6px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(7, 9, 26, 0.75);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+    cursor: pointer;
+    z-index: 3;
+  }
+  .card:hover .cat-menu-btn,
+  .cat-menu-btn:focus-visible,
+  .card.menu-open .cat-menu-btn { opacity: 1; }
+  .cat-menu-btn:hover {
+    border-color: var(--accent);
+    background: rgba(7, 9, 26, 0.95);
+  }
+  .cat-menu {
+    position: absolute;
+    top: 40px;
+    left: 6px;
+    min-width: 150px;
+    max-width: calc(100% - 12px);
+    background: #161a26;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px;
+    z-index: 5;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-height: 240px;
+    overflow-y: auto;
+  }
+  .cat-menu[hidden] { display: none; }
+  .cat-menu-item {
+    background: transparent;
+    border: none;
+    color: var(--text);
+    text-align: left;
+    padding: 7px 10px;
+    font-size: 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .cat-menu-item:hover { background: rgba(106, 163, 255, 0.14); }
+  .cat-menu-item.active { color: var(--accent); font-weight: 600; }
+  .cat-menu-item.muted { color: var(--muted); font-style: italic; }
   .thumb {
     aspect-ratio: 16 / 10;
     background: linear-gradient(135deg, #0a0d1a 0%, #0e1226 100%);
@@ -540,10 +604,78 @@
           <div class="sub">${esc(s.scheme)} · port ${esc(s.port)}</div>
         </div>
       </a>
+      <button class="cat-menu-btn" type="button" title="Change category" aria-label="Change category">🏷</button>
+      <div class="cat-menu" hidden role="menu"></div>
     `;
+
+    const btn = card.querySelector('.cat-menu-btn');
+    const menu = card.querySelector('.cat-menu');
+
+    btn.addEventListener('mousedown', (e) => e.stopPropagation());
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const wasOpen = !menu.hidden;
+      closeAllMenus();
+      if (wasOpen) return;
+      populateCatMenu(menu, s.port);
+      menu.hidden = false;
+      card.classList.add('menu-open');
+    });
+    menu.addEventListener('mousedown', (e) => e.stopPropagation());
+
     attachDrag(card);
     return card;
   }
+
+  function populateCatMenu(menu, port) {
+    menu.innerHTML = '';
+    const current = getCategory(port);
+    const list = loadCatList();
+    const items = [
+      { value: '', label: 'Uncategorized', muted: true, active: current === '' },
+      ...list.map(c => ({ value: c, label: c, active: current === c })),
+    ];
+    if (!list.length) {
+      const hint = document.createElement('div');
+      hint.className = 'cat-menu-item muted';
+      hint.textContent = 'No categories yet — use "+ Add category"';
+      hint.style.cursor = 'default';
+      menu.appendChild(hint);
+      // Still allow clearing to uncategorized — useful when a stale category
+      // assignment lingers after the cat-list was wiped.
+      return;
+    }
+    for (const it of items) {
+      const opt = document.createElement('button');
+      opt.type = 'button';
+      opt.className = 'cat-menu-item'
+        + (it.active ? ' active' : '')
+        + (it.muted ? ' muted' : '');
+      opt.textContent = it.label;
+      opt.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setCategory(port, it.value);
+        closeAllMenus();
+        renderServices(currentServices);
+      });
+      menu.appendChild(opt);
+    }
+  }
+
+  function closeAllMenus() {
+    grid.querySelectorAll('.cat-menu').forEach(m => { m.hidden = true; });
+    grid.querySelectorAll('.card.menu-open').forEach(c => c.classList.remove('menu-open'));
+  }
+
+  // Close any open menu on outside click or Escape.
+  document.addEventListener('click', (e) => {
+    if (!e.target.closest('.cat-menu, .cat-menu-btn')) closeAllMenus();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeAllMenus();
+  });
 
   // Drop target for section headers and empty-section placeholders.
   function attachDropTarget(el, cat) {
@@ -576,6 +708,11 @@
 
   function attachDrag(card) {
     card.addEventListener('dragstart', (e) => {
+      // Don't start a tile drag from the menu button or the menu itself.
+      if (e.target && e.target.closest && e.target.closest('.cat-menu-btn, .cat-menu')) {
+        e.preventDefault();
+        return;
+      }
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', card.dataset.port);
       card.classList.add('dragging');
