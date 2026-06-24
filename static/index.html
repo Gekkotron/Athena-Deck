@@ -88,11 +88,16 @@
   input { width: 200px; }
   input:focus { outline: none; border-color: var(--accent); }
   .status {
-    padding: 8px 20px;
     font-size: 12px;
     color: var(--muted);
-    min-height: 18px;
+    margin-left: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    flex: 1 1 auto;
   }
+  .status:empty { display: none; }
   .status.error { color: var(--error); }
   .progress {
     height: 3px;
@@ -116,15 +121,11 @@
     flex-direction: column;
     gap: 22px;
   }
-  .cat-toolbar {
-    display: flex;
-    justify-content: flex-end;
-  }
   .btn-add-cat {
     background: transparent;
     color: var(--muted);
     border: 1px dashed var(--border);
-    padding: 7px 14px;
+    padding: 7px 12px;
     font-size: 12px;
     border-radius: 6px;
     cursor: pointer;
@@ -325,6 +326,14 @@
   }
   .thumb.loaded::after,
   .thumb.failed::after { display: none; }
+  /* While a scan is in its screenshot phase, every thumb plays the shimmer
+     again — even thumbs that already loaded a stale screenshot — so the UI
+     visibly says "fresh captures are happening". */
+  .thumb.refreshing::after {
+    display: block;
+    animation: shimmer 1.4s linear infinite;
+  }
+  .thumb.refreshing img { opacity: 0.55; }
   .thumb.failed::before {
     content: "no preview";
     color: var(--muted);
@@ -383,13 +392,11 @@
     <h1>Athena Deck <span class="target" id="host-label"></span></h1>
     <input id="host-input" type="text" placeholder="Target host (optional)" autocomplete="off">
     <button id="btn-scan" type="button">Scan</button>
+    <button id="btn-add-cat" class="btn-add-cat" type="button">+ Add category</button>
+    <span class="status" id="status"></span>
   </header>
   <div class="progress" id="prog" hidden><div></div></div>
-  <div class="status" id="status"></div>
   <main>
-    <div class="cat-toolbar">
-      <button id="btn-add-cat" class="btn-add-cat" type="button">+ Add category</button>
-    </div>
     <div id="grid"></div>
   </main>
 
@@ -459,6 +466,8 @@
   }
 
   let currentServices = [];
+  let isScanning = false;          // mirrors backend SCAN_STATE.running
+  let currentScanPhase = 'idle';   // mirrors backend SCAN_STATE.phase
 
   function loadCategories() {
     try { return JSON.parse(localStorage.getItem(CATEGORIES_KEY) || '{}') || {}; }
@@ -631,10 +640,8 @@
     const cacheBust = s.last_seen ? `?t=${encodeURIComponent(s.last_seen)}` : '';
     card.innerHTML = `
       <a class="card-link" href="${esc(linkFor(s))}" target="_blank" rel="noopener noreferrer">
-        <div class="thumb">
-          <img loading="lazy" src="${esc(s.thumb)}${cacheBust}" alt=""
-               onload="this.parentElement.classList.add('loaded')"
-               onerror="this.parentElement.classList.add('failed'); this.remove();">
+        <div class="thumb${isScanning && currentScanPhase === 'screenshot' ? ' refreshing' : ''}">
+          <img loading="lazy" src="${esc(s.thumb)}${cacheBust}" alt="">
         </div>
         <div class="meta">
           <div class="title">${esc(s.title || ('port ' + s.port))}</div>
@@ -644,6 +651,25 @@
       <button class="cat-menu-btn" type="button" title="Change category" aria-label="Change category">🏷</button>
       <div class="cat-menu" hidden role="menu"></div>
     `;
+
+    const img = card.querySelector('.thumb img');
+    img.addEventListener('load', () => {
+      img.parentElement.classList.add('loaded');
+    });
+    img.addEventListener('error', () => {
+      if (isScanning) {
+        // Screenshot might still be in flight on the backend — retry shortly,
+        // keeping the shimmer visible in the meantime.
+        setTimeout(() => {
+          if (!img.isConnected) return;
+          const base = img.src.split('?')[0];
+          img.src = base + '?retry=' + Date.now();
+        }, 2500);
+      } else {
+        img.parentElement.classList.add('failed');
+        img.remove();
+      }
+    });
 
     const btn = card.querySelector('.cat-menu-btn');
     const menu = card.querySelector('.cat-menu');
@@ -843,6 +869,21 @@
       const pct = s.total ? Math.round((s.checked / s.total) * 100) : 0;
       progBar.style.width = pct + '%';
       const phase = s.phase && s.phase !== 'idle' ? s.phase : 'scan';
+      const prevPhase = currentScanPhase;
+      isScanning = !!s.running;
+      currentScanPhase = s.phase || 'idle';
+
+      // First time we see the screenshot phase: refresh services.json (which
+      // the backend wrote just before this phase started) so any newly
+      // discovered ports get cards, and put every thumb into shimmer mode.
+      if (s.running && phase === 'screenshot' && prevPhase !== 'screenshot') {
+        await loadServices();
+        grid.querySelectorAll('.thumb').forEach(t => {
+          t.classList.remove('failed');
+          t.classList.add('refreshing');
+        });
+      }
+
       if (s.running) {
         if (phase === 'ports') {
           setStatus(`scanning ports: ${s.checked}/${s.total} (${s.open_count} open)`);
