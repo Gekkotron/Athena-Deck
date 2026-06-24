@@ -149,7 +149,11 @@
     align-items: center;
     gap: 10px;
     transition: color 0.15s, border-color 0.15s, background 0.15s;
+    user-select: none;
   }
+  .cat-header[draggable="true"] { cursor: grab; }
+  .cat-header[draggable="true"]:active { cursor: grabbing; }
+  .cat-header.dragging { opacity: 0.4; }
   .cat-header .count {
     font-weight: 400;
     font-size: 11px;
@@ -525,14 +529,32 @@
       buckets.get(c).push(s);
     }
 
-    const sections = ['', ...catList];
+    // Categories first (in cat-list order), Uncategorized at the bottom.
+    const sections = [...catList, ''];
     for (const cat of sections) {
       const svcs = buckets.get(cat) || [];
-      // Hide an empty "Uncategorized" — there's nothing to drop INTO it (drop
-      // a card from another section to clear its category from elsewhere).
-      if (cat === '' && svcs.length === 0) continue;
+      // Hide an empty Uncategorized only when there are truly no services at
+      // all — otherwise keep it as a "drag here to clear" target.
+      if (cat === '' && svcs.length === 0 && currentServices.length === 0) continue;
       grid.appendChild(buildSection(cat, svcs));
     }
+  }
+
+  function reorderCategories(srcCat, tgtCat) {
+    const list = loadCatList();
+    const si = list.indexOf(srcCat);
+    if (si < 0) return;
+    list.splice(si, 1);
+    if (tgtCat === '') {
+      // Dropped on Uncategorized → move to end of cat-list (renders just
+      // above Uncategorized in the bottom-pinned layout).
+      list.push(srcCat);
+    } else {
+      const ti = list.indexOf(tgtCat);
+      list.splice(ti < 0 ? list.length : ti, 0, srcCat);
+    }
+    saveCatList(list);
+    renderServices(currentServices);
   }
 
   function buildSection(cat, svcs) {
@@ -565,7 +587,22 @@
         saveCategories(all);
         renderServices(currentServices);
       });
+      // Don't start a category drag from the delete button.
+      del.addEventListener('mousedown', (e) => e.stopPropagation());
       header.appendChild(del);
+
+      // Make the section header itself draggable for category reordering.
+      header.draggable = true;
+      header.addEventListener('dragstart', (e) => {
+        if (e.target.closest && e.target.closest('.cat-delete')) {
+          e.preventDefault();
+          return;
+        }
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', 'cat:' + cat);
+        header.classList.add('dragging');
+      });
+      header.addEventListener('dragend', () => header.classList.remove('dragging'));
     }
     attachDropTarget(header, cat);
     section.appendChild(header);
@@ -678,6 +715,8 @@
   });
 
   // Drop target for section headers and empty-section placeholders.
+  // Accepts both tile drops (`port:N` payload) and category-reorder drops
+  // (`cat:Name` payload).
   function attachDropTarget(el, cat) {
     el.addEventListener('dragover', (e) => {
       e.preventDefault();
@@ -689,20 +728,29 @@
       e.preventDefault();
       e.stopPropagation();
       el.classList.remove('drag-over');
-      const srcPort = parseInt(e.dataTransfer.getData('text/plain'), 10);
-      if (Number.isNaN(srcPort)) return;
-      setCategory(srcPort, cat);
-      // Push to the end of the flat order so the dropped tile lands at the
-      // bottom of its new section (the natural "I just added this" position).
-      const svcs = currentServices.slice();
-      const i = svcs.findIndex(s => s.port === srcPort);
-      if (i >= 0) {
-        const [moved] = svcs.splice(i, 1);
-        svcs.push(moved);
-        saveOrder(svcs);
-        currentServices = svcs;
+      const data = e.dataTransfer.getData('text/plain');
+      if (data.startsWith('cat:')) {
+        const srcCat = data.slice(4);
+        if (!srcCat || srcCat === cat) return;
+        reorderCategories(srcCat, cat);
+        return;
       }
-      renderServices(currentServices);
+      if (data.startsWith('port:')) {
+        const srcPort = parseInt(data.slice(5), 10);
+        if (Number.isNaN(srcPort)) return;
+        setCategory(srcPort, cat);
+        // Push to the end of the flat order so the dropped tile lands at the
+        // bottom of its new section.
+        const svcs = currentServices.slice();
+        const i = svcs.findIndex(s => s.port === srcPort);
+        if (i >= 0) {
+          const [moved] = svcs.splice(i, 1);
+          svcs.push(moved);
+          saveOrder(svcs);
+          currentServices = svcs;
+        }
+        renderServices(currentServices);
+      }
     });
   }
 
@@ -714,7 +762,7 @@
         return;
       }
       e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData('text/plain', card.dataset.port);
+      e.dataTransfer.setData('text/plain', 'port:' + card.dataset.port);
       card.classList.add('dragging');
     });
     card.addEventListener('dragend', () => {
@@ -733,7 +781,10 @@
       e.preventDefault();
       e.stopPropagation();
       card.classList.remove('drag-over');
-      const srcPort = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const data = e.dataTransfer.getData('text/plain');
+      // Ignore category drags landing on a card — only headers reorder cats.
+      if (!data.startsWith('port:')) return;
+      const srcPort = parseInt(data.slice(5), 10);
       const tgtPort = parseInt(card.dataset.port, 10);
       if (Number.isNaN(srcPort) || srcPort === tgtPort) return;
       // Cross-section drop: source adopts the target's category.
