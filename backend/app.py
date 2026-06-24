@@ -60,6 +60,13 @@ _COLOR_SCHEME_RAW = os.environ.get("SCREENSHOT_COLOR_SCHEME", "dark").lower()
 SCREENSHOT_COLOR_SCHEME = (
     _COLOR_SCHEME_RAW if _COLOR_SCHEME_RAW in ("dark", "light", "no-preference") else "dark"
 )
+# Chromium's experimental "auto dark" — applies a content-level dark inversion
+# to sites that DON'T respect prefers-color-scheme. Catches the long tail of
+# hardcoded-light dashboards. Set to "false" to disable if the inversion makes
+# specific apps look worse than their native light theme.
+SCREENSHOT_FORCE_DARK = os.environ.get("SCREENSHOT_FORCE_DARK", "true").lower() in (
+    "1", "true", "yes", "on"
+)
 THUMB_WIDTH = 400
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -251,8 +258,17 @@ async def _screenshot_all(services: list[dict]) -> None:
         return
     THUMBS_DIR.mkdir(parents=True, exist_ok=True)
     sem = asyncio.Semaphore(max(1, SCREENSHOT_CONCURRENCY))
+    launch_args = ["--no-sandbox"]
+    if SCREENSHOT_FORCE_DARK:
+        # Chromium experimental flags: enable the WebContentsForceDark
+        # feature *and* opt every tab into dark-mode rendering so pages with
+        # hardcoded light themes get auto-inverted.
+        launch_args += [
+            "--enable-features=WebContentsForceDark",
+            "--force-dark-mode",
+        ]
     async with async_playwright() as pw:
-        browser = await pw.chromium.launch(args=["--no-sandbox"])
+        browser = await pw.chromium.launch(args=launch_args)
         try:
             async def worker(svc: dict) -> None:
                 async with sem:

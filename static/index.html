@@ -677,9 +677,9 @@
       img.parentElement.classList.add('loaded');
     });
     img.addEventListener('error', () => {
-      if (isScanning) {
-        // Screenshot might still be in flight on the backend — retry shortly,
-        // keeping the shimmer visible in the meantime.
+      // If the backend has already reported this port's capture as done, a
+      // 404 here means the capture genuinely failed — don't retry, mark failed.
+      if (isScanning && !img.dataset.done) {
         setTimeout(() => {
           if (!img.isConnected) return;
           const base = img.src.split('?')[0];
@@ -893,16 +893,11 @@
       isScanning = !!s.running;
       currentScanPhase = s.phase || 'idle';
 
-      // Entering the screenshot phase: refresh services.json (which the
-      // backend wrote just before this phase started) so any newly discovered
-      // ports get rendered cards. Every tile starts in shimmer mode.
-      if (s.running && phase === 'screenshot' && prevPhase !== 'screenshot') {
-        await loadServices();
-      }
-
       // Drive per-tile shimmer from SCAN_STATE.screenshots_done. Tiles whose
-      // port has just transitioned to "done" drop the shimmer and force the
-      // <img> to refetch so the freshly captured PNG appears.
+      // port has just transitioned to "done" drop the shimmer and pre-load the
+      // freshly captured PNG, only swapping the visible <img> src once the
+      // bytes are ready — that avoids the brief blank-flash that would happen
+      // if we set src directly on an opacity-0 image.
       if (s.running && phase === 'screenshot') {
         const done = new Set((s.screenshots_done || []).map(Number));
         grid.querySelectorAll('.card').forEach(card => {
@@ -913,9 +908,22 @@
             if (thumb.classList.contains('refreshing')) {
               thumb.classList.remove('refreshing');
               const img = thumb.querySelector('img');
-              if (img) {
-                thumb.classList.remove('loaded', 'failed');
-                img.src = img.src.split('?')[0] + '?done=' + Date.now();
+              if (!img) return;
+              img.dataset.done = '1';
+              const newSrc = img.src.split('?')[0] + '?done=' + Date.now();
+              if (thumb.classList.contains('loaded')) {
+                // We have a previous screenshot showing — preload the new one
+                // and swap atomically so the user never sees a blank thumb.
+                const pre = new Image();
+                pre.addEventListener('load', () => { img.src = newSrc; });
+                pre.addEventListener('error', () => {
+                  // Capture failed (404). Keep the previous screenshot rather
+                  // than blanking the tile.
+                });
+                pre.src = newSrc;
+              } else {
+                // First successful capture for this tile — just load it.
+                img.src = newSrc;
               }
             }
           } else {

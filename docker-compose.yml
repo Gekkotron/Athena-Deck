@@ -31,6 +31,7 @@ services:
       # - SCREENSHOT_SETTLE_MS=2500
       # - SCREENSHOT_CONCURRENCY=3
       # - SCREENSHOT_COLOR_SCHEME=dark   # dark | light | no-preference
+      # - SCREENSHOT_FORCE_DARK=true     # Chromium auto-dark for stubborn light sites
 
     volumes:
       # Named volume so thumbnails and services.json survive container restarts.

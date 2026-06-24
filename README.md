@@ -37,6 +37,7 @@ All settings are environment variables.
 | `SCREENSHOT_SETTLE_MS`    | `2500`                   | Extra wait after page load before snapping (ms). |
 | `SCREENSHOT_CONCURRENCY`  | `3`                      | Parallel headless contexts during capture. |
 | `SCREENSHOT_COLOR_SCHEME` | `dark`                   | `dark` / `light` / `no-preference` — what the browser reports for `prefers-color-scheme`. |
+| `SCREENSHOT_FORCE_DARK`   | `true`                   | When `true`, enables Chromium's experimental auto-dark for sites that ignore the media query. Set to `false` if auto-inversion looks worse than the native light theme on your apps. |
 
 You can also override `SCAN_HOST` per-scan from the UI: type a host into the
 text field next to the scan buttons (it's persisted to localStorage).
