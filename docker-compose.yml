@@ -1,0 +1,41 @@
+services:
+  athena-deck:
+    build: .
+    container_name: athena-deck
+    restart: unless-stopped
+
+    # ----- Network mode -----------------------------------------------------
+    # Default below is BRIDGE networking — works on macOS / Windows Docker
+    # Desktop because `host.docker.internal` resolves to the host. On Linux
+    # that name does not exist by default; either:
+    #   (a) use `network_mode: host` (see bottom of this file), or
+    #   (b) set SCAN_HOST to the docker bridge IP (usually 172.17.0.1) or
+    #       to the host's LAN IP.
+    ports:
+      - "8888:8888"
+
+    environment:
+      - APP_PORT=8888
+      # Host that the scanner targets. Override per-environment.
+      - SCAN_HOST=host.docker.internal
+      # Optional tuning knobs:
+      # - SCAN_CONCURRENCY=500
+      # - SCAN_CONNECT_TIMEOUT=0.3
+      # - SCREENSHOT_TIMEOUT_MS=8000
+
+    volumes:
+      # Named volume so thumbnails and services.json survive container restarts.
+      - athena_data:/data
+
+    # ----- Linux host-networking alternative -------------------------------
+    # On Linux this is usually what you want: the container reaches the host's
+    # services on 127.0.0.1 with no NAT, and the dashboard is reachable on the
+    # host at http://<host>:8888 directly.
+    #
+    # IMPORTANT: when `network_mode: host` is enabled, the `ports:` mapping
+    # above is IGNORED by Docker. You must also set SCAN_HOST=127.0.0.1.
+    #
+    # network_mode: host
+
+volumes:
+  athena_data:
