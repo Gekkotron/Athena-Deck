@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Athena Deck</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style>
   :root {
     --bg: #07091a;
@@ -68,6 +69,14 @@
     margin: 0;
     margin-right: 8px;
     letter-spacing: 0.2px;
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+  }
+  header h1 .logo {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
   }
   header h1 .target {
     color: var(--muted);
@@ -389,7 +398,16 @@
 </head>
 <body>
   <header>
-    <h1>Athena Deck <span class="target" id="host-label"></span></h1>
+    <h1>
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="3"  y="3"  width="12" height="12" rx="2.5" fill="none" stroke="#6aa3ff" stroke-width="2.4"/>
+        <rect x="17" y="3"  width="12" height="12" rx="2.5" fill="#6aa3ff"/>
+        <rect x="3"  y="17" width="12" height="12" rx="2.5" fill="#6aa3ff"/>
+        <rect x="17" y="17" width="12" height="12" rx="2.5" fill="none" stroke="#6aa3ff" stroke-width="2.4"/>
+      </svg>
+      <span>Athena Deck</span>
+      <span class="target" id="host-label"></span>
+    </h1>
     <input id="host-input" type="text" placeholder="Target host (optional)" autocomplete="off">
     <button id="btn-scan" type="button">Scan</button>
     <button id="btn-add-cat" class="btn-add-cat" type="button">+ Add category</button>

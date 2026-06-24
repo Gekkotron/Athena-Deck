@@ -362,6 +362,11 @@ async def root() -> HTMLResponse:
     return HTMLResponse(index.read_text(encoding="utf-8"))
 
 
+@app.get("/favicon.svg")
+async def favicon_svg() -> FileResponse:
+    return FileResponse(STATIC_DIR / "favicon.svg", media_type="image/svg+xml")
+
+
 @app.get("/api/services")
 async def list_services() -> JSONResponse:
     if not SERVICES_FILE.exists():
