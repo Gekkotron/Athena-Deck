@@ -116,13 +116,12 @@
     border: 1px solid var(--border);
     border-radius: 8px;
     overflow: hidden;
-    text-decoration: none;
-    color: inherit;
     display: flex;
     flex-direction: column;
     transition: border-color 0.15s, transform 0.15s;
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
+    position: relative;
   }
   .card:hover {
     border-color: var(--accent);
@@ -136,7 +135,80 @@
     outline: 2px solid var(--accent);
     outline-offset: -2px;
   }
+  .card-link {
+    color: inherit;
+    text-decoration: none;
+    display: flex;
+    flex-direction: column;
+  }
   .card .meta { user-select: none; }
+  .cat-edit {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 50%;
+    background: rgba(7, 9, 26, 0.7);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s, border-color 0.15s, background 0.15s;
+    cursor: pointer;
+    z-index: 2;
+  }
+  .card:hover .cat-edit,
+  .cat-edit:focus-visible,
+  .card.has-cat .cat-edit { opacity: 1; }
+  .cat-edit:hover { border-color: var(--accent); background: rgba(7, 9, 26, 0.9); }
+  .cat-chip {
+    display: inline-block;
+    margin-top: 6px;
+    padding: 2px 9px;
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.2px;
+    color: var(--accent);
+    background: rgba(106, 163, 255, 0.13);
+    border: 1px solid rgba(106, 163, 255, 0.3);
+    border-radius: 999px;
+    white-space: nowrap;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+  }
+  .filter-chip {
+    font-size: 12px;
+    padding: 4px 11px;
+    background: transparent;
+    color: var(--muted);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+  }
+  .filter-chip:hover { color: var(--text); border-color: var(--accent); }
+  .filter-chip.active {
+    color: var(--accent);
+    border-color: var(--accent);
+    background: rgba(106, 163, 255, 0.12);
+  }
   .thumb {
     aspect-ratio: 16 / 10;
     background: linear-gradient(135deg, #0a0d1a 0%, #0e1226 100%);
@@ -228,6 +300,7 @@
   </header>
   <div class="progress" id="prog" hidden><div></div></div>
   <div class="status" id="status"></div>
+  <div class="filter-row" id="filter-row" hidden></div>
   <main id="grid"></main>
 
 <script>
@@ -242,6 +315,9 @@
 
   const STORAGE_KEY = 'athena-deck:host';
   const ORDER_KEY = 'athena-deck:order';
+  const CATEGORIES_KEY = 'athena-deck:categories';
+  const filterRow = document.getElementById('filter-row');
+  let activeFilter = '';   // '' = All, '__uncat__' = uncategorized, else category name
   // Hosts the backend uses internally that don't resolve in the browser.
   // For these, we substitute window.location.hostname when building card links.
   const INTERNAL_HOSTS = new Set([
@@ -294,42 +370,125 @@
 
   let currentServices = [];
 
+  function loadCategories() {
+    try { return JSON.parse(localStorage.getItem(CATEGORIES_KEY) || '{}') || {}; }
+    catch { return {}; }
+  }
+  function saveCategories(cats) {
+    localStorage.setItem(CATEGORIES_KEY, JSON.stringify(cats));
+  }
+  function getCategory(port) {
+    return loadCategories()[String(port)] || '';
+  }
+  function setCategory(port, value) {
+    const cats = loadCategories();
+    const trimmed = (value || '').trim().slice(0, 40);
+    if (trimmed) cats[String(port)] = trimmed;
+    else delete cats[String(port)];
+    saveCategories(cats);
+  }
+
+  function visibleAfterFilter(svcs) {
+    const cats = loadCategories();
+    if (activeFilter === '__uncat__') return svcs.filter(s => !cats[String(s.port)]);
+    if (activeFilter) return svcs.filter(s => cats[String(s.port)] === activeFilter);
+    return svcs;
+  }
+
+  function renderFilters() {
+    const cats = loadCategories();
+    const used = [...new Set(currentServices.map(s => cats[String(s.port)]).filter(Boolean))].sort();
+    const hasUncat = currentServices.some(s => !cats[String(s.port)]);
+    if (!used.length) {
+      filterRow.hidden = true;
+      activeFilter = '';
+      filterRow.innerHTML = '';
+      return;
+    }
+    // If the active filter has been deleted, fall back to "All".
+    if (activeFilter && activeFilter !== '__uncat__' && !used.includes(activeFilter)) activeFilter = '';
+    filterRow.hidden = false;
+    filterRow.innerHTML = '';
+    const chips = [{ key: '', label: 'All' }, ...used.map(c => ({ key: c, label: c }))];
+    if (hasUncat) chips.push({ key: '__uncat__', label: 'Uncategorized' });
+    for (const { key, label } of chips) {
+      const btn = document.createElement('button');
+      btn.className = 'filter-chip' + (activeFilter === key ? ' active' : '');
+      btn.type = 'button';
+      btn.textContent = label;
+      btn.addEventListener('click', () => {
+        activeFilter = key;
+        renderServices(currentServices);
+      });
+      filterRow.appendChild(btn);
+    }
+  }
+
   function renderServices(svcs) {
     currentServices = applyOrder(svcs || []);
-    if (!currentServices.length) {
-      grid.innerHTML = '<div class="empty">No services yet. Run a scan to discover what is listening on this host.</div>';
+    renderFilters();
+    const visible = visibleAfterFilter(currentServices);
+    if (!visible.length) {
+      const msg = !currentServices.length
+        ? 'No services yet. Run a scan to discover what is listening on this host.'
+        : 'No services match this filter.';
+      grid.innerHTML = `<div class="empty">${msg}</div>`;
       return;
     }
     grid.innerHTML = '';
-    for (const s of currentServices) grid.appendChild(buildCard(s));
+    for (const s of visible) grid.appendChild(buildCard(s));
   }
 
   function buildCard(s) {
-    const a = document.createElement('a');
-    a.className = 'card';
-    a.href = linkFor(s);
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.draggable = true;
-    a.dataset.port = String(s.port);
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.draggable = true;
+    card.dataset.port = String(s.port);
+
+    const cat = getCategory(s.port);
+    if (cat) card.classList.add('has-cat');
+
     const cacheBust = s.last_seen ? `?t=${encodeURIComponent(s.last_seen)}` : '';
-    a.innerHTML = `
-      <div class="thumb">
-        <img loading="lazy" src="${esc(s.thumb)}${cacheBust}" alt=""
-             onload="this.parentElement.classList.add('loaded')"
-             onerror="this.parentElement.classList.add('failed'); this.remove();">
-      </div>
-      <div class="meta">
-        <div class="title">${esc(s.title || ('port ' + s.port))}</div>
-        <div class="sub">${esc(s.scheme)} · port ${esc(s.port)}</div>
-      </div>
+    card.innerHTML = `
+      <a class="card-link" href="${esc(linkFor(s))}" target="_blank" rel="noopener noreferrer">
+        <div class="thumb">
+          <img loading="lazy" src="${esc(s.thumb)}${cacheBust}" alt=""
+               onload="this.parentElement.classList.add('loaded')"
+               onerror="this.parentElement.classList.add('failed'); this.remove();">
+        </div>
+        <div class="meta">
+          <div class="title">${esc(s.title || ('port ' + s.port))}</div>
+          <div class="sub">${esc(s.scheme)} · port ${esc(s.port)}</div>
+          ${cat ? `<span class="cat-chip">${esc(cat)}</span>` : ''}
+        </div>
+      </a>
+      <button class="cat-edit" type="button" title="Set category" aria-label="Set category">🏷</button>
     `;
-    attachDrag(a);
-    return a;
+
+    const editBtn = card.querySelector('.cat-edit');
+    editBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const current = getCategory(s.port);
+      const next = prompt(`Category for "${s.title || 'port ' + s.port}"\n(leave empty to clear):`, current);
+      if (next === null) return;
+      setCategory(s.port, next);
+      renderServices(currentServices);
+    });
+    // Don't let mousedown on the edit button start a drag of the card.
+    editBtn.addEventListener('mousedown', (e) => e.stopPropagation());
+
+    attachDrag(card);
+    return card;
   }
 
   function attachDrag(card) {
     card.addEventListener('dragstart', (e) => {
+      // Don't start a card drag if the gesture originated on the edit button.
+      if (e.target && e.target.closest && e.target.closest('.cat-edit')) {
+        e.preventDefault();
+        return;
+      }
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData('text/plain', card.dataset.port);
       card.classList.add('dragging');
