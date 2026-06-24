@@ -270,12 +270,13 @@ async def _screenshot_all(services: list[dict], color_scheme: Optional[str] = No
     if not to_capture:
         return
 
+    effective_scheme = (color_scheme or SCREENSHOT_COLOR_SCHEME).lower()
     sem = asyncio.Semaphore(max(1, SCREENSHOT_CONCURRENCY))
     launch_args = ["--no-sandbox"]
-    if SCREENSHOT_FORCE_DARK:
-        # Chromium experimental flags: enable the WebContentsForceDark
-        # feature *and* opt every tab into dark-mode rendering so pages with
-        # hardcoded light themes get auto-inverted.
+    # Force-dark is process-level (Chromium launch flag); it OVERRIDES the
+    # per-context color_scheme. Only apply it when the requested scheme is
+    # actually dark — otherwise it cancels the light theme we just asked for.
+    if SCREENSHOT_FORCE_DARK and effective_scheme == "dark":
         launch_args += [
             "--enable-features=WebContentsForceDark",
             "--force-dark-mode",
@@ -301,6 +302,20 @@ async def _screenshot_all(services: list[dict], color_scheme: Optional[str] = No
 # --------------------------------------------------------------------------- #
 # Scan orchestration
 # --------------------------------------------------------------------------- #
+
+def _theme_from_prefs() -> Optional[str]:
+    """Read the dashboard's saved theme from /data/preferences.json. Returns
+    "light" / "dark" if set, else None. Used as the default color scheme for
+    new screenshots so the captures match what the user is looking at."""
+    if not PREFS_FILE.exists():
+        return None
+    try:
+        prefs = json.loads(PREFS_FILE.read_text() or "{}")
+    except json.JSONDecodeError:
+        return None
+    theme = (prefs.get("theme") or "").lower()
+    return theme if theme in ("light", "dark") else None
+
 
 def _ports_for(kind: str) -> list[int]:
     if kind == "fast":
@@ -358,7 +373,10 @@ async def _run_scan(host: str, kind: str) -> None:
 
         SCAN_STATE["phase"] = "screenshot"
         try:
-            await _screenshot_all(services)
+            # Default to the dashboard's current theme so captures match what
+            # the user is looking at. The env var is the fallback when no
+            # theme has been set in the UI yet.
+            await _screenshot_all(services, color_scheme=_theme_from_prefs())
         except Exception as e:
             log.exception("screenshot phase failed")
             SCAN_STATE["error"] = f"screenshot phase failed: {e}"
@@ -511,9 +529,10 @@ async def regenerate_screenshots(theme: Optional[str] = None) -> dict:
     if not services:
         raise HTTPException(status_code=400, detail="no services to refresh")
     cs = (theme or "").lower()
-    color_scheme = cs if cs in ("light", "dark", "no-preference") else None
-    asyncio.create_task(_run_screenshots_only(services, color_scheme))
-    return {"ok": True, "count": len(services), "theme": color_scheme or SCREENSHOT_COLOR_SCHEME}
+    if cs not in ("light", "dark", "no-preference"):
+        cs = _theme_from_prefs() or SCREENSHOT_COLOR_SCHEME
+    asyncio.create_task(_run_screenshots_only(services, cs))
+    return {"ok": True, "count": len(services), "theme": cs}
 
 
 @app.get("/api/thumb/{port}")
