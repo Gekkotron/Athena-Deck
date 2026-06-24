@@ -1,6 +1,9 @@
 # Official Playwright Python image ships Chromium + every system dep it needs,
 # so screenshots work out of the box without `playwright install-deps`.
-FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
+# Pinned to match the Playwright pip version in backend/requirements.txt.
+# When bumping one, bump the other to the same vX.Y.Z — otherwise the bundled
+# Chromium under /ms-playwright won't match what the lib expects.
+FROM mcr.microsoft.com/playwright/python:v1.60.0-jammy
 
 WORKDIR /app
 

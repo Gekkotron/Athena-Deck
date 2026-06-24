@@ -5,14 +5,20 @@ services:
     restart: unless-stopped
 
     # ----- Network mode -----------------------------------------------------
-    # Default below is BRIDGE networking — works on macOS / Windows Docker
-    # Desktop because `host.docker.internal` resolves to the host. On Linux
-    # that name does not exist by default; either:
-    #   (a) use `network_mode: host` (see bottom of this file), or
-    #   (b) set SCAN_HOST to the docker bridge IP (usually 172.17.0.1) or
-    #       to the host's LAN IP.
+    # Default below is BRIDGE networking. `host.docker.internal` resolves to
+    # the host on macOS / Windows out of the box, and on Linux thanks to the
+    # `extra_hosts: host-gateway` line below (Docker 20.10+).
+    #
+    # On Linux you can alternatively switch to `network_mode: host` (see the
+    # commented block at the bottom of this file) — that's what you want if
+    # the dashboard should reach services that bind to 127.0.0.1 only.
     ports:
       - "8888:8888"
+
+    # Makes `host.docker.internal` work on Linux too — Docker substitutes
+    # the host's gateway IP at container start.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
     environment:
       - APP_PORT=8888
