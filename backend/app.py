@@ -50,7 +50,7 @@ SCAN_CONNECT_TIMEOUT = float(os.environ.get("SCAN_CONNECT_TIMEOUT", "0.3"))
 #   late-loading fonts/images) have time to paint before we screenshot them.
 # - CONCURRENCY: how many Chromium contexts to run in parallel. One browser
 #   instance shared across all of them; each context is ~30–80 MB of RAM in
-#   practice, so 3 keeps a Geekom-class host comfortable.
+#   practice, so 2 keeps a small home-server comfortable.
 SCREENSHOT_TIMEOUT_MS = int(os.environ.get("SCREENSHOT_TIMEOUT_MS", "12000"))
 SCREENSHOT_SETTLE_MS = int(os.environ.get("SCREENSHOT_SETTLE_MS", "2500"))
 SCREENSHOT_CONCURRENCY = int(os.environ.get("SCREENSHOT_CONCURRENCY", "2"))
