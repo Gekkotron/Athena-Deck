@@ -8,9 +8,22 @@ n8n, whatever else is listening.
 
 ![Athena Deck dashboard](docs/screenshot.png)
 
-> Drop a screenshot at `docs/screenshot.png` to populate the image above.
-> Use the per-tile **Blur thumbnail** option (top-left 🏷 menu on any card) to
-> hide camera feeds and other sensitive previews before capturing.
+> The hero image above is generated from `docs/mockup.html` with headless
+> Chrome — useful as a clean preview that doesn't leak real services. To
+> regenerate it, run:
+>
+> ```bash
+> "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+>   --headless=new --disable-gpu --hide-scrollbars \
+>   --force-device-scale-factor=2 --window-size=1280,1100 \
+>   --screenshot="$(pwd)/docs/screenshot.png" \
+>   "file://$(pwd)/docs/mockup.html"
+> ```
+>
+> To use a screenshot of your **live** dashboard instead, open the tile menu
+> (top-left 🏷) on any sensitive card and pick **Blur thumbnail** before
+> capturing — camera feeds and other previews stay private while the layout
+> remains legible.
 
 * **Backend** — FastAPI + Playwright (headless Chromium) for screenshots.
 * **Frontend** — a single static `index.html`, no build step, no framework.

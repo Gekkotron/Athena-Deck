@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Athena Deck — Preview</title>
+<style>
+  :root {
+    --bg: #07091a;
+    --panel: rgba(22, 25, 34, 0.78);
+    --panel-2: rgba(28, 32, 48, 0.85);
+    --border: #2a2f3c;
+    --text: #e6e8ee;
+    --muted: #8a93a6;
+    --accent: #6aa3ff;
+    --thumb-bg: linear-gradient(135deg, #0a0d1a 0%, #0e1226 100%);
+    --grad-1: rgba(70, 115, 230, 0.32);
+    --grad-2: rgba(40, 85, 200, 0.26);
+    --grad-3: rgba(20, 60, 150, 0.22);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, "Segoe UI", system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.4;
+    position: relative;
+    overflow-x: hidden;
+    min-height: 100vh;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -25%;
+    z-index: -1;
+    background:
+      radial-gradient(ellipse 55% 45% at 25% 25%, var(--grad-1), transparent 65%),
+      radial-gradient(ellipse 50% 50% at 75% 60%, var(--grad-2), transparent 65%),
+      radial-gradient(ellipse 65% 50% at 50% 95%, var(--grad-3), transparent 70%);
+    pointer-events: none;
+  }
+  header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 16px; font-weight: 600; margin: 0; margin-right: 8px;
+    display: inline-flex; align-items: center; gap: 9px;
+    letter-spacing: 0.2px;
+  }
+  .logo { width: 22px; height: 22px; flex-shrink: 0; }
+  .target { color: var(--muted); font-weight: 400; }
+  button, input {
+    background: var(--panel-2); color: var(--text);
+    border: 1px solid var(--border); padding: 7px 12px;
+    border-radius: 6px; font-size: 13px; font-family: inherit;
+  }
+  input { width: 200px; }
+  .status { font-size: 12px; color: var(--muted); margin-left: 4px; }
+  .btn-add-cat, .btn-theme {
+    background: transparent; color: var(--muted);
+    border: 1px dashed var(--border); padding: 7px 12px;
+    font-size: 12px; border-radius: 6px;
+  }
+  .btn-theme { margin-left: auto; font-size: 14px; padding: 5px 10px; }
+  main { padding: 20px; display: flex; flex-direction: column; gap: 18px; }
+  #grid { display: flex; flex-direction: column; gap: 22px; }
+  .cat-section { display: flex; flex-direction: column; gap: 12px; }
+  .cat-header {
+    margin: 0; padding: 6px 4px 8px;
+    font-size: 12px; font-weight: 600; letter-spacing: 0.5px;
+    text-transform: uppercase; color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+  }
+  .cat-header .count {
+    font-weight: 400; font-size: 11px; opacity: 0.6;
+    text-transform: none; letter-spacing: 0;
+  }
+  .cat-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; display: flex; flex-direction: column;
+    backdrop-filter: blur(6px); position: relative;
+  }
+  .card-link {
+    color: inherit; text-decoration: none;
+    display: flex; flex-direction: column;
+    overflow: hidden; border-radius: 8px;
+  }
+  .thumb {
+    aspect-ratio: 16 / 10;
+    background: var(--thumb-bg);
+    overflow: hidden; position: relative;
+  }
+  .thumb svg { width: 100%; height: 100%; display: block; }
+  .meta { padding: 11px 14px 13px; }
+  .title {
+    font-size: 14px; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .card.private .thumb { filter: blur(12px); }
+  .card.private .title { filter: blur(4px); }
+</style>
+</head>
+<body>
+  <header>
+    <h1>
+      <svg class="logo" viewBox="0 0 32 32" aria-hidden="true">
+        <rect x="3"  y="3"  width="12" height="12" rx="2.5" fill="none" stroke="#6aa3ff" stroke-width="2.4"/>
+        <rect x="17" y="3"  width="12" height="12" rx="2.5" fill="#6aa3ff"/>
+        <rect x="3"  y="17" width="12" height="12" rx="2.5" fill="#6aa3ff"/>
+        <rect x="17" y="17" width="12" height="12" rx="2.5" fill="none" stroke="#6aa3ff" stroke-width="2.4"/>
+      </svg>
+      <span>Athena Deck</span>
+      <span class="target">· geekom.local</span>
+    </h1>
+    <input value="" placeholder="Target host (optional)">
+    <button>Scan</button>
+    <span class="status">Done. 9 open ports.</span>
+    <button class="btn-theme">🌙</button>
+    <button class="btn-add-cat">+ Add category</button>
+  </header>
+
+  <main>
+    <div id="grid">
+
+      <!-- ====================== HOME ====================== -->
+      <section class="cat-section">
+        <h2 class="cat-header"><span>Home</span><span class="count">3</span></h2>
+        <div class="cat-grid">
+
+          <!-- Home Assistant -->
+          <div class="card">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#1a1d29"/>
+                  <rect x="0" y="0" width="400" height="36" fill="#0e1018"/>
+                  <text x="16" y="23" font-family="system-ui" font-size="13" font-weight="600" fill="#03a9f4">⌂ Home Assistant</text>
+                  <rect x="20" y="56" width="170" height="74" rx="6" fill="#252a3a"/>
+                  <text x="34" y="83" font-family="system-ui" font-size="11" fill="#03a9f4">LIVING ROOM</text>
+                  <text x="34" y="115" font-family="system-ui" font-size="28" font-weight="300" fill="#fff">22.4°</text>
+                  <rect x="210" y="56" width="170" height="74" rx="6" fill="#252a3a"/>
+                  <text x="224" y="83" font-family="system-ui" font-size="11" fill="#03a9f4">BEDROOM</text>
+                  <text x="224" y="115" font-family="system-ui" font-size="28" font-weight="300" fill="#fff">21.1°</text>
+                  <rect x="20" y="146" width="170" height="74" rx="6" fill="#252a3a"/>
+                  <circle cx="50" cy="183" r="14" fill="#ffd54f"/>
+                  <text x="76" y="180" font-family="system-ui" font-size="12" fill="#fff">Living room</text>
+                  <text x="76" y="196" font-family="system-ui" font-size="10" fill="#8a93a6">3 lights · on</text>
+                  <rect x="210" y="146" width="170" height="74" rx="6" fill="#252a3a"/>
+                  <circle cx="240" cy="183" r="14" fill="#4caf50"/>
+                  <text x="266" y="180" font-family="system-ui" font-size="12" fill="#fff">Front door</text>
+                  <text x="266" y="196" font-family="system-ui" font-size="10" fill="#8a93a6">Locked</text>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Home Assistant</div>
+                <div class="sub">http · port 8123</div>
+              </div>
+            </a>
+          </div>
+
+          <!-- Frigate (BLURRED for privacy) -->
+          <div class="card private">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#0a0d10"/>
+                  <rect x="0" y="0" width="400" height="34" fill="#181c1f"/>
+                  <text x="14" y="22" font-family="system-ui" font-size="12" font-weight="700" fill="#4caf50">FRIGATE NVR</text>
+                  <rect x="14" y="48" width="180" height="100" fill="#1a3340"/>
+                  <rect x="20" y="54" width="60" height="14" fill="#000" opacity="0.6"/>
+                  <text x="24" y="65" font-family="system-ui" font-size="10" fill="#fff">Driveway</text>
+                  <circle cx="100" cy="100" r="22" fill="#3b6378"/>
+                  <rect x="80" y="120" width="40" height="22" fill="#3b6378"/>
+                  <rect x="206" y="48" width="180" height="100" fill="#2a2a2a"/>
+                  <text x="216" y="60" font-family="system-ui" font-size="10" fill="#fff">Backyard</text>
+                  <circle cx="296" cy="98" r="18" fill="#4a4a4a"/>
+                  <rect x="14" y="156" width="180" height="80" fill="#1f2530"/>
+                  <text x="24" y="170" font-family="system-ui" font-size="10" fill="#fff">Front Door</text>
+                  <rect x="24" y="178" width="160" height="50" fill="#384352"/>
+                  <rect x="206" y="156" width="180" height="80" fill="#202225"/>
+                  <text x="216" y="170" font-family="system-ui" font-size="10" fill="#fff">Garage</text>
+                  <rect x="216" y="178" width="160" height="50" fill="#2c3036"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Frigate</div>
+                <div class="sub">http · port 5000</div>
+              </div>
+            </a>
+          </div>
+
+          <!-- Node-RED -->
+          <div class="card">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#222"/>
+                  <rect x="0" y="0" width="400" height="32" fill="#a02020"/>
+                  <text x="14" y="21" font-family="system-ui" font-size="13" font-weight="600" fill="#fff">Node-RED</text>
+                  <rect x="40" y="70" width="80" height="32" rx="3" fill="#87c5d6"/>
+                  <text x="58" y="91" font-family="system-ui" font-size="11" fill="#000">mqtt in</text>
+                  <line x1="120" y1="86" x2="170" y2="86" stroke="#888" stroke-width="2"/>
+                  <rect x="170" y="70" width="80" height="32" rx="3" fill="#e2d96e"/>
+                  <text x="194" y="91" font-family="system-ui" font-size="11" fill="#000">switch</text>
+                  <line x1="250" y1="86" x2="300" y2="86" stroke="#888" stroke-width="2"/>
+                  <rect x="300" y="70" width="60" height="32" rx="3" fill="#bbcc00"/>
+                  <text x="318" y="91" font-family="system-ui" font-size="11" fill="#000">debug</text>
+                  <rect x="40" y="130" width="80" height="32" rx="3" fill="#c0e3a5"/>
+                  <text x="62" y="151" font-family="system-ui" font-size="11" fill="#000">inject</text>
+                  <line x1="120" y1="146" x2="170" y2="146" stroke="#888" stroke-width="2"/>
+                  <rect x="170" y="130" width="80" height="32" rx="3" fill="#dac4de"/>
+                  <text x="190" y="151" font-family="system-ui" font-size="11" fill="#000">function</text>
+                  <line x1="250" y1="146" x2="300" y2="146" stroke="#888" stroke-width="2"/>
+                  <rect x="300" y="130" width="80" height="32" rx="3" fill="#c7c7c7"/>
+                  <text x="320" y="151" font-family="system-ui" font-size="11" fill="#000">http out</text>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Node-RED</div>
+                <div class="sub">http · port 1880</div>
+              </div>
+            </a>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ====================== MEDIA ====================== -->
+      <section class="cat-section">
+        <h2 class="cat-header"><span>Media</span><span class="count">3</span></h2>
+        <div class="cat-grid">
+
+          <!-- Plex -->
+          <div class="card">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#1f1f1f"/>
+                  <rect x="0" y="0" width="400" height="36" fill="#000"/>
+                  <text x="14" y="23" font-family="system-ui" font-size="13" font-weight="700" fill="#e5a00d">PLEX</text>
+                  <text x="14" y="62" font-family="system-ui" font-size="11" fill="#bbb">CONTINUE WATCHING</text>
+                  <rect x="14" y="74" width="110" height="150" rx="3" fill="#4a3528"/>
+                  <rect x="14" y="200" width="110" height="24" fill="#000" opacity="0.6"/>
+                  <rect x="14" y="219" width="60" height="3" fill="#e5a00d"/>
+                  <rect x="134" y="74" width="110" height="150" rx="3" fill="#28344a"/>
+                  <rect x="134" y="200" width="110" height="24" fill="#000" opacity="0.6"/>
+                  <rect x="134" y="219" width="80" height="3" fill="#e5a00d"/>
+                  <rect x="254" y="74" width="110" height="150" rx="3" fill="#3a4a28"/>
+                  <rect x="254" y="200" width="110" height="24" fill="#000" opacity="0.6"/>
+                  <rect x="254" y="219" width="40" height="3" fill="#e5a00d"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Plex</div>
+                <div class="sub">http · port 32400</div>
+              </div>
+            </a>
+          </div>
+
+          <!-- Jellyfin -->
+          <div class="card">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#101010"/>
+                  <rect x="0" y="0" width="400" height="36" fill="#00a4dc"/>
+                  <text x="14" y="23" font-family="system-ui" font-size="13" font-weight="700" fill="#fff">JELLYFIN</text>
+                  <text x="14" y="62" font-family="system-ui" font-size="11" fill="#888">MY LIBRARY</text>
+                  <rect x="14" y="74" width="78" height="115" rx="4" fill="#5a2d8a"/>
+                  <rect x="100" y="74" width="78" height="115" rx="4" fill="#1f4a78"/>
+                  <rect x="186" y="74" width="78" height="115" rx="4" fill="#7a4220"/>
+                  <rect x="272" y="74" width="78" height="115" rx="4" fill="#2d6d4f"/>
+                  <text x="14" y="210" font-family="system-ui" font-size="11" fill="#888">RECENTLY ADDED</text>
+                  <rect x="14" y="220" width="120" height="22" rx="2" fill="#1a1a1a"/>
+                  <rect x="142" y="220" width="120" height="22" rx="2" fill="#1a1a1a"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Jellyfin</div>
+                <div class="sub">http · port 8096</div>
+              </div>
+            </a>
+          </div>
+
+          <!-- Sonarr (BLURRED) -->
+          <div class="card private">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#1d2229"/>
+                  <rect x="0" y="0" width="400" height="36" fill="#2596be"/>
+                  <text x="14" y="23" font-family="system-ui" font-size="13" font-weight="700" fill="#fff">SONARR · series</text>
+                  <rect x="0" y="46" width="400" height="34" fill="#262c33"/>
+                  <text x="14" y="68" font-family="system-ui" font-size="10" fill="#8aa">TITLE</text>
+                  <text x="180" y="68" font-family="system-ui" font-size="10" fill="#8aa">NEXT AIRING</text>
+                  <text x="320" y="68" font-family="system-ui" font-size="10" fill="#8aa">STATUS</text>
+                  <rect x="0" y="90" width="400" height="32" fill="#1f242b"/>
+                  <text x="14" y="110" font-family="system-ui" font-size="11" fill="#ddd">▶ Show Name One</text>
+                  <text x="320" y="110" font-family="system-ui" font-size="11" fill="#4caf50">●</text>
+                  <rect x="0" y="124" width="400" height="32" fill="#262c33"/>
+                  <text x="14" y="144" font-family="system-ui" font-size="11" fill="#ddd">▶ Another Series Title</text>
+                  <text x="320" y="144" font-family="system-ui" font-size="11" fill="#4caf50">●</text>
+                  <rect x="0" y="158" width="400" height="32" fill="#1f242b"/>
+                  <text x="14" y="178" font-family="system-ui" font-size="11" fill="#ddd">▶ Yet Another Thing</text>
+                  <text x="320" y="178" font-family="system-ui" font-size="11" fill="#ffd54f">●</text>
+                  <rect x="0" y="192" width="400" height="32" fill="#262c33"/>
+                  <text x="14" y="212" font-family="system-ui" font-size="11" fill="#ddd">▶ Fourth Title Here</text>
+                  <text x="320" y="212" font-family="system-ui" font-size="11" fill="#4caf50">●</text>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Sonarr</div>
+                <div class="sub">http · port 8989</div>
+              </div>
+            </a>
+          </div>
+
+        </div>
+      </section>
+
+      <!-- ====================== MONITORING ====================== -->
+      <section class="cat-section">
+        <h2 class="cat-header"><span>Monitoring</span><span class="count">3</span></h2>
+        <div class="cat-grid">
+
+          <!-- Grafana -->
+          <div class="card">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#161719"/>
+                  <rect x="0" y="0" width="400" height="32" fill="#1f2024"/>
+                  <text x="14" y="21" font-family="system-ui" font-size="12" font-weight="700" fill="#f15a24">⊕ Grafana · Node Exporter</text>
+                  <rect x="14" y="46" width="180" height="90" rx="3" fill="#1f2024" stroke="#2d2f33"/>
+                  <text x="22" y="60" font-family="system-ui" font-size="9" fill="#7c7c7c">CPU USAGE</text>
+                  <polyline points="22,128 50,118 78,108 106,114 134,100 162,90 186,85" fill="none" stroke="#73bf69" stroke-width="2"/>
+                  <polyline points="22,130 50,124 78,120 106,128 134,112 162,108 186,104" fill="none" stroke="#f2cc0c" stroke-width="2"/>
+                  <rect x="206" y="46" width="180" height="90" rx="3" fill="#1f2024" stroke="#2d2f33"/>
+                  <text x="214" y="60" font-family="system-ui" font-size="9" fill="#7c7c7c">MEMORY</text>
+                  <polyline points="214,124 240,118 266,118 292,112 318,108 344,108 374,98" fill="none" stroke="#5794f2" stroke-width="2"/>
+                  <rect x="14" y="146" width="372" height="90" rx="3" fill="#1f2024" stroke="#2d2f33"/>
+                  <text x="22" y="160" font-family="system-ui" font-size="9" fill="#7c7c7c">NETWORK I/O</text>
+                  <polyline points="22,224 60,210 98,204 136,212 174,192 212,182 250,200 288,180 326,176 374,164" fill="none" stroke="#ff7383" stroke-width="2"/>
+                  <polyline points="22,228 60,220 98,218 136,220 174,210 212,206 250,212 288,202 326,200 374,192" fill="none" stroke="#5794f2" stroke-width="2"/>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Grafana</div>
+                <div class="sub">http · port 3000</div>
+              </div>
+            </a>
+          </div>
+
+          <!-- Portainer -->
+          <div class="card">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#1a1f2e"/>
+                  <rect x="0" y="0" width="400" height="34" fill="#13bef9"/>
+                  <text x="14" y="22" font-family="system-ui" font-size="13" font-weight="700" fill="#fff">PORTAINER</text>
+                  <text x="14" y="60" font-family="system-ui" font-size="10" fill="#8aa">CONTAINERS</text>
+                  <rect x="14" y="70" width="370" height="38" rx="3" fill="#242b3d"/>
+                  <circle cx="32" cy="89" r="6" fill="#3bb273"/>
+                  <text x="46" y="93" font-family="system-ui" font-size="11" fill="#ddd">athena-deck · running</text>
+                  <rect x="14" y="114" width="370" height="38" rx="3" fill="#1f2535"/>
+                  <circle cx="32" cy="133" r="6" fill="#3bb273"/>
+                  <text x="46" y="137" font-family="system-ui" font-size="11" fill="#ddd">grafana · running</text>
+                  <rect x="14" y="158" width="370" height="38" rx="3" fill="#242b3d"/>
+                  <circle cx="32" cy="177" r="6" fill="#3bb273"/>
+                  <text x="46" y="181" font-family="system-ui" font-size="11" fill="#ddd">homeassistant · running</text>
+                  <rect x="14" y="202" width="370" height="38" rx="3" fill="#1f2535"/>
+                  <circle cx="32" cy="221" r="6" fill="#e76f51"/>
+                  <text x="46" y="225" font-family="system-ui" font-size="11" fill="#ddd">test-runner · exited</text>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Portainer</div>
+                <div class="sub">https · port 9443</div>
+              </div>
+            </a>
+          </div>
+
+          <!-- Uptime Kuma -->
+          <div class="card">
+            <a class="card-link" href="#">
+              <div class="thumb">
+                <svg viewBox="0 0 400 250" preserveAspectRatio="xMidYMid slice">
+                  <rect width="400" height="250" fill="#0c0c0f"/>
+                  <rect x="0" y="0" width="400" height="34" fill="#161823"/>
+                  <text x="14" y="22" font-family="system-ui" font-size="13" font-weight="700" fill="#5cdd8b">Uptime Kuma</text>
+                  <text x="14" y="58" font-family="system-ui" font-size="10" fill="#666">SERVICES · 12 UP · 1 DOWN</text>
+                  <rect x="14" y="72" width="180" height="44" rx="4" fill="#1a2030"/>
+                  <text x="24" y="92" font-family="system-ui" font-size="11" fill="#fff">Home Assistant</text>
+                  <text x="24" y="107" font-family="system-ui" font-size="10" fill="#5cdd8b">UP · 4ms</text>
+                  <rect x="206" y="72" width="180" height="44" rx="4" fill="#1a2030"/>
+                  <text x="216" y="92" font-family="system-ui" font-size="11" fill="#fff">Plex Media Server</text>
+                  <text x="216" y="107" font-family="system-ui" font-size="10" fill="#5cdd8b">UP · 11ms</text>
+                  <rect x="14" y="124" width="180" height="44" rx="4" fill="#1a2030"/>
+                  <text x="24" y="144" font-family="system-ui" font-size="11" fill="#fff">Frigate</text>
+                  <text x="24" y="159" font-family="system-ui" font-size="10" fill="#5cdd8b">UP · 8ms</text>
+                  <rect x="206" y="124" width="180" height="44" rx="4" fill="#1a2030"/>
+                  <text x="216" y="144" font-family="system-ui" font-size="11" fill="#fff">Backup NAS</text>
+                  <text x="216" y="159" font-family="system-ui" font-size="10" fill="#ff6b6b">DOWN · 0ms</text>
+                  <text x="14" y="190" font-family="system-ui" font-size="10" fill="#666">UPTIME · 24h</text>
+                  <g transform="translate(14, 200)">
+                    <rect x="0" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="9" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="18" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="27" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="36" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="45" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="54" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="63" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="72" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="81" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="90" y="0" width="6" height="22" fill="#ffd54f"/>
+                    <rect x="99" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="108" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="117" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="126" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="135" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="144" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="153" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="162" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="171" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="180" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="189" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="198" y="0" width="6" height="22" fill="#5cdd8b"/>
+                    <rect x="207" y="0" width="6" height="22" fill="#5cdd8b"/>
+                  </g>
+                </svg>
+              </div>
+              <div class="meta">
+                <div class="title">Uptime Kuma</div>
+                <div class="sub">http · port 3001</div>
+              </div>
+            </a>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </main>
+</body>
+</html>
