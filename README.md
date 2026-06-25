@@ -6,6 +6,12 @@ thumbnails. Point it at a host, click **Fast scan**, and a minute later you
 have clickable previews of Home Assistant, Grafana, Portainer, Plex, Sonarr,
 n8n, whatever else is listening.
 
+![Athena Deck dashboard](docs/screenshot.png)
+
+> Drop a screenshot at `docs/screenshot.png` to populate the image above.
+> Use the per-tile **Blur thumbnail** option (top-left 🏷 menu on any card) to
+> hide camera feeds and other sensitive previews before capturing.
+
 * **Backend** — FastAPI + Playwright (headless Chromium) for screenshots.
 * **Frontend** — a single static `index.html`, no build step, no framework.
 * **Packaging** — one container; runs via `docker compose up`.

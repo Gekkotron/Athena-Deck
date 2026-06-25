@@ -384,6 +384,16 @@
   .cat-menu-item:hover { background: rgba(106, 163, 255, 0.14); }
   .cat-menu-item.active { color: var(--accent); font-weight: 600; }
   .cat-menu-item.muted { color: var(--muted); font-style: italic; }
+  .cat-menu-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 0;
+    opacity: 0.6;
+  }
+  /* Privacy mode: blur the thumbnail and title for screenshots. Port number
+     stays readable so the URL it points to is still useful. */
+  .card.private .thumb { filter: blur(12px); }
+  .card.private .title { filter: blur(4px); }
   .thumb {
     aspect-ratio: 16 / 10;
     background: var(--thumb-bg);
@@ -707,6 +717,22 @@
     Prefs.set('hidden', [...set]);
   }
 
+  function loadPrivate() {
+    const v = Prefs.get('private', []);
+    if (!Array.isArray(v)) return new Set();
+    return new Set(v.map(Number).filter(n => !Number.isNaN(n)));
+  }
+  function savePrivate(set) {
+    Prefs.set('private', [...set]);
+  }
+  function isPrivate(port) { return loadPrivate().has(Number(port)); }
+  function setPrivate(port, on) {
+    const s = loadPrivate();
+    if (on) s.add(Number(port));
+    else s.delete(Number(port));
+    savePrivate(s);
+  }
+
   function ensureCatList() {
     const list = loadCatList();
     const seen = new Set(list);
@@ -857,7 +883,7 @@
 
   function buildCard(s) {
     const card = document.createElement('div');
-    card.className = 'card';
+    card.className = 'card' + (isPrivate(s.port) ? ' private' : '');
     card.draggable = true;
     card.dataset.port = String(s.port);
 
@@ -940,36 +966,54 @@
     menu.innerHTML = '';
     const current = getCategory(port);
     const list = loadCatList();
-    const items = [
-      { value: '', label: 'Uncategorized', muted: true, active: current === '' },
-      ...list.map(c => ({ value: c, label: c, active: current === c })),
-    ];
     if (!list.length) {
       const hint = document.createElement('div');
       hint.className = 'cat-menu-item muted';
       hint.textContent = 'No categories yet — use "+ Add category"';
       hint.style.cursor = 'default';
       menu.appendChild(hint);
-      // Still allow clearing to uncategorized — useful when a stale category
-      // assignment lingers after the cat-list was wiped.
-      return;
+    } else {
+      const items = [
+        { value: '', label: 'Uncategorized', muted: true, active: current === '' },
+        ...list.map(c => ({ value: c, label: c, active: current === c })),
+      ];
+      for (const it of items) {
+        const opt = document.createElement('button');
+        opt.type = 'button';
+        opt.className = 'cat-menu-item'
+          + (it.active ? ' active' : '')
+          + (it.muted ? ' muted' : '');
+        opt.textContent = it.label;
+        opt.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setCategory(port, it.value);
+          closeAllMenus();
+          renderServices(currentServices);
+        });
+        menu.appendChild(opt);
+      }
     }
-    for (const it of items) {
-      const opt = document.createElement('button');
-      opt.type = 'button';
-      opt.className = 'cat-menu-item'
-        + (it.active ? ' active' : '')
-        + (it.muted ? ' muted' : '');
-      opt.textContent = it.label;
-      opt.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        setCategory(port, it.value);
-        closeAllMenus();
-        renderServices(currentServices);
-      });
-      menu.appendChild(opt);
-    }
+
+    // ---- Privacy toggle ---------------------------------------------------
+    const sep = document.createElement('div');
+    sep.className = 'cat-menu-sep';
+    menu.appendChild(sep);
+
+    const blurItem = document.createElement('button');
+    blurItem.type = 'button';
+    blurItem.className = 'cat-menu-item';
+    const currentlyPrivate = isPrivate(port);
+    blurItem.textContent = currentlyPrivate ? 'Unblur thumbnail' : 'Blur thumbnail';
+    blurItem.title = 'Hide this tile’s preview for screenshots';
+    blurItem.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setPrivate(port, !currentlyPrivate);
+      closeAllMenus();
+      renderServices(currentServices);
+    });
+    menu.appendChild(blurItem);
   }
 
   function closeAllMenus() {
