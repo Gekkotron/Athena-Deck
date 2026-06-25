@@ -1,0 +1,12 @@
+# macOS Finder metadata
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local dev caches
+.cache/
+*.log
