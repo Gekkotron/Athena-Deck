@@ -6,11 +6,16 @@ thumbnails. Point it at a host, click **Fast scan**, and a minute later you
 have clickable previews of Home Assistant, Grafana, Portainer, Plex, Sonarr,
 n8n, whatever else is listening.
 
-![Athena Deck dashboard](docs/screenshot.png)
+![Athena Deck dashboard](docs/screenshot2.png)
 
-> The hero image above is generated from `docs/mockup.html` with headless
-> Chrome — useful as a clean preview that doesn't leak real services. To
-> regenerate it, run:
+> A live dashboard with two user-defined categories. The Frigate tile in
+> *CAMERA* is rendered with the per-tile **Blur thumbnail** option so the
+> camera feed doesn't leak in a screenshot — open the 🏷 menu on any card
+> to toggle it.
+>
+> If you want a service-free preview to embed somewhere else,
+> `docs/mockup.html` is a self-contained static page that re-uses the
+> dashboard CSS with sample tiles, renderable to PNG via headless Chrome:
 >
 > ```bash
 > "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
@@ -19,11 +24,6 @@ n8n, whatever else is listening.
 >   --screenshot="$(pwd)/docs/screenshot.png" \
 >   "file://$(pwd)/docs/mockup.html"
 > ```
->
-> To use a screenshot of your **live** dashboard instead, open the tile menu
-> (top-left 🏷) on any sensitive card and pick **Blur thumbnail** before
-> capturing — camera feeds and other previews stay private while the layout
-> remains legible.
 
 * **Backend** — FastAPI + Playwright (headless Chromium) for screenshots.
 * **Frontend** — a single static `index.html`, no build step, no framework.
