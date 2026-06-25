@@ -196,19 +196,33 @@ async def _scan_ports(host: str, ports: list[int]) -> list[int]:
 _TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 
 
+async def _try_http_get(url: str, follow_redirects: bool):
+    try:
+        async with httpx.AsyncClient(
+            verify=False, timeout=5.0, follow_redirects=follow_redirects
+        ) as client:
+            return await client.get(url)
+    except Exception:
+        return None
+
+
 async def _probe_http(host: str, port: int) -> Optional[dict]:
     """Try HTTP then HTTPS. Return {scheme, title, status} on first response,
     else None. `status` is the HTTP status code the frontend uses to decide
     whether the port actually serves a web UI (we treat 404 as "no UI here").
+
+    Two-pass per scheme: first with follow_redirects=True (richer title from
+    the final page), then without — because port 80 frequently 301s to HTTPS
+    and if that target fails from the container's vantage (cert mismatch,
+    host unreachable, weird DNS) the whole request throws. The no-redirect
+    fallback still earns the original port a tile.
     """
     for scheme in ("http", "https"):
         url = f"{scheme}://{host}:{port}"
-        try:
-            async with httpx.AsyncClient(
-                verify=False, timeout=5.0, follow_redirects=True
-            ) as client:
-                r = await client.get(url)
-        except Exception:
+        r = await _try_http_get(url, follow_redirects=True)
+        if r is None:
+            r = await _try_http_get(url, follow_redirects=False)
+        if r is None:
             continue
         title: Optional[str] = None
         try:
