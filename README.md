@@ -6,16 +6,19 @@ thumbnails. Point it at a host, click **Fast scan**, and a minute later you
 have clickable previews of Home Assistant, Grafana, Portainer, Plex, Sonarr,
 n8n, whatever else is listening.
 
-![Athena Deck dashboard](docs/screenshot2.png)
+![Athena Deck dashboard](docs/dashboard.png)
 
-> A live dashboard with two user-defined categories. The Frigate tile in
-> *CAMERA* is rendered with the per-tile **Blur thumbnail** option so the
-> camera feed doesn't leak in a screenshot — open the 🏷 menu on any card
-> to toggle it.
->
-> If you want a service-free preview to embed somewhere else,
-> `docs/mockup.html` is a self-contained static page that re-uses the
-> dashboard CSS with sample tiles, renderable to PNG via headless Chrome:
+A live dashboard view. *VoiceAssist Monitoring* (port 9000) is rendered with
+the per-tile **Blur thumbnail** option so the preview stays private in
+screenshots — open the 🏷 menu on any card to toggle it. Below: more
+categories with the same blur pattern applied to a personal camera feed and
+the Frigate-style preview on port 5000.
+
+![More categories](docs/dashboard-more.png)
+
+> Need a service-free preview to embed elsewhere? `docs/mockup.html` is a
+> self-contained static page that re-uses the dashboard CSS with sample
+> tiles, renderable to PNG via headless Chrome:
 >
 > ```bash
 > "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
