@@ -1138,8 +1138,12 @@
     statusEl.classList.toggle('error', !!isError);
   }
 
-  function setButtons(disabled) {
-    btnScan.disabled = disabled;
+  function setButtons(scanning) {
+    // Repurpose the Scan button as Cancel while a scan is in flight so the
+    // user can abort a slow/unreachable-host scan without waiting for it.
+    btnScan.disabled = false;
+    btnScan.textContent = scanning ? 'Cancel' : 'Scan';
+    btnScan.dataset.mode = scanning ? 'cancel' : 'scan';
   }
 
   let polling = false;
@@ -1285,7 +1289,22 @@
     }
   }
 
-  btnScan.addEventListener('click', () => startScan('full'));
+  btnScan.addEventListener('click', () => {
+    if (btnScan.dataset.mode === 'cancel') cancelScan();
+    else startScan('full');
+  });
+
+  async function cancelScan() {
+    btnScan.disabled = true;        // brief debounce while the request lands
+    setStatus('Cancelling…');
+    try {
+      await fetch('/api/scan/cancel', { method: 'POST' });
+    } catch (e) {
+      // Best-effort. If the request fails the backend was probably gone too.
+    } finally {
+      btnScan.disabled = false;
+    }
+  }
 
   btnAddCat.addEventListener('click', () => {
     const name = prompt('New category name:');

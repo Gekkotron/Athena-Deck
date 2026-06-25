@@ -37,6 +37,13 @@ services:
       # Named volume so thumbnails and services.json survive container restarts.
       - athena_data:/data
 
+    # Hard memory cap. Without this, a misbehaving page (heavy SPA, autoplay
+    # video) during the screenshot phase can let Chromium balloon. The
+    # backend already trims its own footprint (chunked port scan, capped
+    # Chromium caches, viewport 1024x640, SCREENSHOT_CONCURRENCY=2), but a
+    # docker-level ceiling keeps the rest of the host safe.
+    mem_limit: 1g
+
     # ----- Linux host-networking alternative -------------------------------
     # On Linux this is usually what you want: the container reaches the host's
     # services on 127.0.0.1 with no NAT, and the dashboard is reachable on the

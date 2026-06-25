@@ -53,7 +53,7 @@ SCAN_CONNECT_TIMEOUT = float(os.environ.get("SCAN_CONNECT_TIMEOUT", "0.3"))
 #   practice, so 3 keeps a Geekom-class host comfortable.
 SCREENSHOT_TIMEOUT_MS = int(os.environ.get("SCREENSHOT_TIMEOUT_MS", "12000"))
 SCREENSHOT_SETTLE_MS = int(os.environ.get("SCREENSHOT_SETTLE_MS", "2500"))
-SCREENSHOT_CONCURRENCY = int(os.environ.get("SCREENSHOT_CONCURRENCY", "3"))
+SCREENSHOT_CONCURRENCY = int(os.environ.get("SCREENSHOT_CONCURRENCY", "2"))
 # Reported `prefers-color-scheme` for the headless browser. Most self-hosted
 # UIs honour this and render in their dark theme — matching the dashboard.
 # Values: "dark" | "light" | "no-preference".
@@ -121,6 +121,8 @@ SCAN_STATE: dict[str, Any] = {
     # Ports whose screenshot finished during the current screenshot phase.
     # The frontend polls this to drive per-tile shimmer state.
     "screenshots_done": [],
+    # Set by POST /api/scan/cancel — workers exit early once they see this.
+    "cancel_requested": False,
 }
 
 
@@ -153,7 +155,13 @@ async def _check_port(host: str, port: int, timeout: float) -> bool:
 
 
 async def _scan_ports(host: str, ports: list[int]) -> list[int]:
-    """Scan `ports` on `host` with bounded concurrency, updating SCAN_STATE."""
+    """Scan `ports` on `host` with bounded concurrency, updating SCAN_STATE.
+
+    Ports are processed in chunks rather than all at once: creating a Task per
+    port for a full 65,535-port scan would pile ~130 MB of asyncio overhead
+    into the queue. Chunks let each batch's Tasks be garbage-collected before
+    the next is created.
+    """
     sem = asyncio.Semaphore(SCAN_CONCURRENCY)
     open_ports: list[int] = []
     SCAN_STATE["total"] = len(ports)
@@ -161,7 +169,11 @@ async def _scan_ports(host: str, ports: list[int]) -> list[int]:
     SCAN_STATE["open_count"] = 0
 
     async def worker(p: int) -> None:
+        if SCAN_STATE.get("cancel_requested"):
+            return
         async with sem:
+            if SCAN_STATE.get("cancel_requested"):
+                return
             ok = await _check_port(host, p, SCAN_CONNECT_TIMEOUT)
         # Update counters outside the semaphore to keep slots flowing.
         SCAN_STATE["checked"] += 1
@@ -169,7 +181,11 @@ async def _scan_ports(host: str, ports: list[int]) -> list[int]:
             open_ports.append(p)
             SCAN_STATE["open_count"] = len(open_ports)
 
-    await asyncio.gather(*(worker(p) for p in ports))
+    chunk_size = max(SCAN_CONCURRENCY * 4, 500)
+    for i in range(0, len(ports), chunk_size):
+        if SCAN_STATE.get("cancel_requested"):
+            break
+        await asyncio.gather(*(worker(p) for p in ports[i:i + chunk_size]))
     return sorted(open_ports)
 
 
@@ -218,7 +234,10 @@ async def _screenshot_one(browser, svc: dict, color_scheme: Optional[str] = None
     """Capture a thumbnail PNG for one service; return True on success."""
     url = f"{svc['scheme']}://{svc['scan_host']}:{svc['port']}"
     ctx = await browser.new_context(
-        viewport={"width": 1280, "height": 800},
+        # Smaller native viewport — we downscale to THUMB_WIDTH=400 anyway, so
+        # a 1280-wide capture was paying ~30% more Chromium memory for no
+        # visible quality gain. 1024 keeps most "desktop" layouts intact.
+        viewport={"width": 1024, "height": 640},
         ignore_https_errors=True,
         color_scheme=color_scheme or SCREENSHOT_COLOR_SCHEME,
     )
@@ -272,7 +291,19 @@ async def _screenshot_all(services: list[dict], color_scheme: Optional[str] = No
 
     effective_scheme = (color_scheme or SCREENSHOT_COLOR_SCHEME).lower()
     sem = asyncio.Semaphore(max(1, SCREENSHOT_CONCURRENCY))
-    launch_args = ["--no-sandbox"]
+    # Memory-friendly Chromium flags: cap disk/media caches, skip /dev/shm
+    # (often tiny inside containers), turn off translate/sync/etc.
+    launch_args = [
+        "--no-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-background-networking",
+        "--disable-sync",
+        "--disable-translate",
+        "--disable-extensions",
+        "--disable-gpu",
+        "--disk-cache-size=33554432",     # 32 MB hard cap
+        "--media-cache-size=33554432",
+    ]
     # Force-dark is process-level (Chromium launch flag); it OVERRIDES the
     # per-context color_scheme. Only apply it when the requested scheme is
     # actually dark — otherwise it cancels the light theme we just asked for.
@@ -285,7 +316,13 @@ async def _screenshot_all(services: list[dict], color_scheme: Optional[str] = No
         browser = await pw.chromium.launch(args=launch_args)
         try:
             async def worker(svc: dict) -> None:
+                if SCAN_STATE.get("cancel_requested"):
+                    SCAN_STATE["screenshots_done"].append(svc["port"])
+                    return
                 async with sem:
+                    if SCAN_STATE.get("cancel_requested"):
+                        SCAN_STATE["screenshots_done"].append(svc["port"])
+                        return
                     ok = await _screenshot_one(browser, svc, color_scheme=color_scheme)
                 # Mark this port done regardless of capture success — the
                 # frontend tells "captured" apart from "failed" by whether
@@ -354,6 +391,7 @@ async def _run_scan(host: str, kind: str) -> None:
             "error": None,
             "phase": "ports",
             "screenshots_done": [],
+            "cancel_requested": False,
         }
     )
     try:
@@ -497,6 +535,17 @@ async def scan_full(host: Optional[str] = None) -> dict:
     return await _start_scan("full", host)
 
 
+@app.post("/api/scan/cancel")
+async def scan_cancel() -> dict:
+    """Signal the in-flight scan/regenerate to bail out at the next checkpoint.
+    Workers see the flag inside the semaphore and return without doing more
+    work; the scan finishes within a few seconds with whatever it found so far."""
+    if not SCAN_STATE["running"]:
+        raise HTTPException(status_code=409, detail="no scan running")
+    SCAN_STATE["cancel_requested"] = True
+    return {"ok": True}
+
+
 async def _run_screenshots_only(services: list[dict], color_scheme: Optional[str]) -> None:
     """Re-run the screenshot phase against an existing services list, optionally
     with a different color scheme. Re-uses SCAN_STATE so the frontend's polling
@@ -514,6 +563,7 @@ async def _run_screenshots_only(services: list[dict], color_scheme: Optional[str
             "error": None,
             "phase": "screenshot",
             "screenshots_done": [],
+            "cancel_requested": False,
         }
     )
     try:
